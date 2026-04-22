@@ -1,3 +1,3 @@
-integrand_mesh.npy
-Integrand Meshes/
+Integrand Meshes/*
+!Integrand Meshes/.gitkeep
 Plots/
