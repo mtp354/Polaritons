@@ -1,3 +1,18 @@
-Integrand Meshes/*
-!Integrand Meshes/.gitkeep
-Plots/
+# Computed results (large arrays) — tracked by git only if explicitly added
+Results/integrand_meshes/*.npy
+Results/Q_results/*.npy
+Results/interaction_strengths/*.npy
+
+# Keep metadata JSON files so result provenance is version-controlled
+!Results/**/*_meta.json
+
+# Saved figures
+Plots/*.png
+Plots/*.pdf
+# Keep figure metadata
+!Plots/*_meta.json
+
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
