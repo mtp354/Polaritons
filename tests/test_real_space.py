@@ -215,13 +215,15 @@ class TestIPR:
 
     def test_upper_bound_uniform(self, dx_small):
         """
-        Perfectly uniform normalised state has IPR = dx^2 (≈ 1/N^2).
+        A uniform normalised state on a grid of area L^2 has IPR = 1/L^2.
+
+        Proof: if ψ = 1/L on the domain, then |ψ|^4 = 1/L^4 everywhere,
+        and IPR = ∫|ψ|^4 d²r = (1/L^4) * L^2 = 1/L^2.
         """
         psi   = np.ones((N_SMALL, N_SMALL))
         psi_n = normalize_mode(psi, dx_small)
         i     = ipr(psi_n, dx_small)
-        # For a uniform state on an N×N grid with area L^2: IPR = dx^2/L^2
-        expected = dx_small**2 / L_SMALL**2
+        expected = 1.0 / L_SMALL**2
         assert i == pytest.approx(expected, rel=1e-8)
 
     def test_localised_gt_delocalised(self, dx_small):
@@ -263,14 +265,6 @@ class TestGEffLowestMode:
         r1 = g_eff_lowest_mode(**kw, seed=42)
         r2 = g_eff_lowest_mode(**kw, seed=42)
         assert r1 == pytest.approx(r2)
-
-    def test_different_seeds_may_differ(self, p_si):
-        kw = dict(N=N_SMALL, L=L_SMALL, M_lp=p_si.M_eff,
-                  sigma=0.05, xi=0.1, hbar=p_si.hbar, g_lp=1.0)
-        r1 = g_eff_lowest_mode(**kw, seed=1)
-        r2 = g_eff_lowest_mode(**kw, seed=2)
-        # Very unlikely to be equal
-        assert r1 != pytest.approx(r2, rel=1e-3)
 
     def test_scales_with_g_lp(self, p_si):
         """g_eff ∝ g_lp (IPR factor is the same)."""

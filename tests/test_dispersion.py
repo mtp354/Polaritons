@@ -106,13 +106,28 @@ class TestELP:
             E_lp = float(np.real(simple_model.E_LP(np.array([0.0]), eta)[0]))
             assert E_lp == pytest.approx(E_0 - params_nat.Omega, rel=1e-5)
 
-    def test_disorder_tuned_vs_untuned_differ(self, simple_model):
-        """disorder_tuned and untuned should differ for eta != 0."""
-        k_arr  = simple_model.q_grid_si[:5]
-        eta    = 1.0
-        E_tuned   = simple_model.E_LP(k_arr, eta, disorder_tuned=True)
-        E_untuned = simple_model.E_LP(k_arr, eta, disorder_tuned=False)
-        # They differ because cavity reference energies are different
+    def test_disorder_tuned_vs_untuned_differ(self, params_nat, q_grid_nat, eta_grid):
+        """
+        With a non-zero self-energy the disorder-tuned and untuned dispersions
+        must differ, because E_ex(0, eta) != E_ex(0, 0) when Q != 0.
+        """
+        # Build a model where Q has a small non-zero imaginary part
+        # so that E_ex(0, eta>0) != E_ex(0, 0).
+        Q_nonzero = np.zeros((len(eta_grid), len(q_grid_nat)), dtype=complex)
+        # Shift the self-energy linearly with eta index so the cavity
+        # reference energy varies between disorder-tuned and untuned.
+        # Use a shift of 10.0 per unit of eta so that after the E_unit
+        # re-scaling inside DispersionModel.Q() the energy difference
+        # between tuned and untuned is clearly larger than allclose's
+        # default rtol=1e-5 on values ~380.
+        for i, eta in enumerate(eta_grid):
+            Q_nonzero[i] = eta * 10.0
+        model = DispersionModel(params_nat, q_grid_nat, eta_grid, Q_nonzero)
+
+        k_arr = model.q_grid_si[:5]
+        eta   = eta_grid[-1]   # largest disorder value
+        E_tuned   = model.E_LP(k_arr, eta, disorder_tuned=True)
+        E_untuned = model.E_LP(k_arr, eta, disorder_tuned=False)
         assert not np.allclose(E_tuned, E_untuned)
 
     def test_E_LP_output_shape(self, simple_model):
