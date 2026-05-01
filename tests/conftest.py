@@ -10,47 +10,47 @@ from polaritons.dispersion import DispersionModel
 
 @pytest.fixture(scope="session")
 def params_si():
-    """Default Params in SI units."""
-    return Params()
+	"""Default Params in SI units."""
+	return Params()
 
 
 @pytest.fixture(scope="session")
 def params_nat(params_si):
-    """Default Params converted to natural units (E_bind=1, a=1)."""
-    return params_si.to_natural()
+	"""Default Params converted to natural units (E_bind=1, a=1)."""
+	return params_si.to_natural()
 
 
 @pytest.fixture(scope="session")
 def eta_grid():
-    """Five disorder values used to build DispersionModel fixture.
+	"""Five disorder values used to build DispersionModel fixture.
 
-    RectBivariateSpline requires >= 4 points per axis (default cubic kx=ky=3).
-    """
-    return np.array([0.0, 0.5, 1.0, 1.5, 2.0])
+	RectBivariateSpline requires >= 4 points per axis (default cubic kx=ky=3).
+	"""
+	return np.array([0.0, 0.5, 1.0, 1.5, 2.0])
 
 
 @pytest.fixture(scope="session")
 def q_grid_nat():
-    """Twenty-point natural-unit momentum grid [0, 50]."""
-    return np.linspace(0.0, 50.0, 20)
+	"""Twenty-point natural-unit momentum grid [0, 50]."""
+	return np.linspace(0.0, 50.0, 20)
 
 
 @pytest.fixture(scope="session")
 def Q_results_zero(eta_grid, q_grid_nat):
-    """Q_results with no self-energy (all zeros)."""
-    return np.zeros((len(eta_grid), len(q_grid_nat)), dtype=complex)
+	"""Q_results with no self-energy (all zeros)."""
+	return np.zeros((len(eta_grid), len(q_grid_nat)), dtype=complex)
 
 
 @pytest.fixture(scope="session")
-def simple_model(params_nat, q_grid_nat, eta_grid, Q_results_zero):
-    """
-    Minimal DispersionModel with zero self-energy.
+def simple_model(params_si, q_grid_nat, eta_grid, Q_results_zero):
+	"""
+	Minimal DispersionModel with zero self-energy.
 
-    Uses natural-unit Params so that L_unit and E_unit are correctly set
-    for the unit conversions inside DispersionModel.Q().
+	Uses SI Params.  DispersionModel converts the natural Picard momentum
+	grid and Q self-energy internally.
 
-    With Q=0 everywhere:
-      E_ex(k, eta) = p.E_gap - p.E_bind + p.hbar^2 * k^2 / (2*p.M)
-      E_ph(0, eta) == E_ex(0, eta)  by tuned-cavity construction
-    """
-    return DispersionModel(params_nat, q_grid_nat, eta_grid, Q_results_zero)
+	With Q=0 everywhere:
+	  E_ex(k, eta) = p.E_gap - p.E_bind + p.hbar^2 * k^2 / (2*p.M)
+	  E_ph(0, eta) == E_ex(0, eta)  by tuned-cavity construction
+	"""
+	return DispersionModel(params_si, q_grid_nat, eta_grid, Q_results_zero)
