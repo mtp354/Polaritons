@@ -80,7 +80,7 @@ class Params:
 
 	# ---- polariton / cavity ------------------------------------------------
 	Omega       : float = 1.4e-2           # eV  Rabi splitting
-	m_prime     : float = 10.0             # dimensionless band-structure constant
+	m_prime     : float = 1.0             # dimensionless band-structure constant
 	n_refr      : float = 3.0             # cavity refractive index
 	N_qw        : int   = 1               # number of quantum wells
 
