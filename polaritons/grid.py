@@ -4,10 +4,10 @@ Non-uniform quadrature grid construction for Picard iteration.
 The momentum domain is split into four segments with different spacing
 strategies to resolve both the IR behaviour and the resonance peak:
 
-  A  [0,          q_A_end]  power-law clustered near zero
-  B  [q_A_end,    q_B_end]  coarse linear
-  C  [q_B_end,    q_C_end]  dense linear (resonance region)
-  D  [q_C_end,    q_max ]   sparse log-spaced tail
+    A  [0,          q_A_end]  power-law clustered near zero
+    B  [q_A_end,    q_B_end]  coarse linear
+    C  [q_B_end,    q_C_end]  dense linear (resonance region)
+    D  [q_C_end,    q_max ]   sparse log-spaced tail
 """
 
 from __future__ import annotations

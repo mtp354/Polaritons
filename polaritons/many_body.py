@@ -1,10 +1,10 @@
 """
 Finite-temperature many-body quantities:
-  - effective LP mass
-  - chemical potential (Bose-Einstein fugacity series)
-  - Hopfield coefficients
-  - Matsubara bubble Pi0
-  - bare and screened polariton interaction strength
+    - effective LP mass
+    - chemical potential (Bose-Einstein fugacity series)
+    - Hopfield coefficients
+    - Matsubara bubble Pi0
+    - bare and screened polariton interaction strength
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from .dispersion import DispersionModel
 
 
 def effective_mass(model: DispersionModel, eta: float, k_grid: np.ndarray,
-                   disorder_tuned: bool = True) -> float:
+                disorder_tuned: bool = True) -> float:
     """
     LP effective mass at k=0 from numerical second derivative.
 
@@ -48,7 +48,7 @@ def _fugacity_series_coefficients(
         l_stop  = min(l_start + block_size, L_terms + 1)
         l_block = np.arange(l_start, l_stop)[:, None]
         exp_block = ks[None, :] * np.exp(-l_block * beta * dE_vals[None, :])
-        block_coeffs = np.trapz(exp_block, ks, axis=1) / float(2.0 * np.pi)
+        block_coeffs = np.trapezoid(exp_block, ks, axis=1) / float(2.0 * np.pi) # type: ignore
         a[idx:idx + len(block_coeffs)] = block_coeffs
         idx += len(block_coeffs)
     return a

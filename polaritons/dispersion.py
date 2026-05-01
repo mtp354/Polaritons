@@ -117,7 +117,7 @@ class DispersionModel:
         Parameters
         ----------
         disorder_tuned : if True, cavity is tuned to Re[E_ex(0,eta)];
-                         if False, cavity is tuned to E_ex(0, 0) (disorder-free)
+                        if False, cavity is tuned to E_ex(0, 0) (disorder-free)
         """
         k    = np.asarray(k_si, dtype=float)
         Eex  = np.asarray(self.E_ex(k, eta),    dtype=complex)
