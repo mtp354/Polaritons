@@ -92,14 +92,12 @@ def make_kernel_gaussian(p: Params, n_gauss: int = 96):
 			q_b = q[i0:i1]                   # (B,)
 
 			# p²[b, j, l] = q_b[b]² + k[j]² − 2 q_b[b] k[j] cosθ[l]
-			p2 = (q_b[:, None, None]**2
-				  + k[None, :, None]**2
+			p2 = (q_b[:, None, None]**2 + k[None, :, None]**2
 				  - 2.0 * q_b[:, None, None] * k[None, :, None] * cos_theta[None, None, :])
 			# p2 shape: (B, N_k, N_theta)
 
 			gauss   = np.exp(-0.5 * xi**2 * p2)
-			bracket = ((p2 + shift_h)**(-1.5) / m_h**2
-					   - (p2 + shift_e)**(-1.5) / m_e**2)
+			bracket = ((p2 + shift_h)**(-1.5) / m_h**2 - (p2 + shift_e)**(-1.5) / m_e**2)
 
 			# Contract θ axis: (B, N_k, N_theta) @ (N_theta,) → (B, N_k)
 			out[i0:i1] = prefactor * (gauss * bracket**2 @ theta_w)
@@ -114,8 +112,8 @@ def make_kernel_nongaussian(p: Params, n_gauss: int = 96):
 	Return a vectorised kernel function K(q, k) for white-noise disorder.
 
 	The kernel has three terms:
-	  t1, t2 — analytic closed-form outer products (no integration)
-	  t3     — angular integral evaluated with ``n_gauss``-point GL quadrature
+	t1, t2 — analytic closed-form outer products (no integration)
+	t3     — angular integral evaluated with ``n_gauss``-point GL quadrature
 
 	Parameters
 	----------
