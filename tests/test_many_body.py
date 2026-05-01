@@ -27,7 +27,7 @@ class TestHopfieldCoefficients:
 
 		This is a pure algebraic identity and must hold exactly.
 		"""
-		k_arr   = simple_model.q_grid_si[1:8]
+		k_arr   = simple_model.q_grid_nat[1:8]
 		for eta in eta_grid:
 			E_lp = simple_model.E_LP(k_arr, eta)
 			X, C = hopfield_coefficients(simple_model, eta, k_arr, E_lp)
@@ -40,14 +40,14 @@ class TestHopfieldCoefficients:
 		satisfies |X_LP|² = 1/2.
 		"""
 		for eta in eta_grid:
-			k_arr = simple_model.q_grid_si[:1]   # k=0
+			k_arr = simple_model.q_grid_nat[:1]   # k=0
 			E_lp  = simple_model.E_LP(k_arr, eta)
 			X, C  = hopfield_coefficients(simple_model, eta, k_arr, E_lp)
 			assert np.abs(X[0])**2 == pytest.approx(0.5, abs=1e-6)
 			assert np.abs(C[0])**2 == pytest.approx(0.5, abs=1e-6)
 
 	def test_output_shapes(self, simple_model, eta_grid):
-		k_arr = simple_model.q_grid_si[1:7]
+		k_arr = simple_model.q_grid_nat[1:7]
 		E_lp  = simple_model.E_LP(k_arr, 0.0)
 		X, C  = hopfield_coefficients(simple_model, 0.0, k_arr, E_lp)
 		assert X.shape == k_arr.shape
@@ -106,20 +106,20 @@ class TestFugacitySeriesCoefficients:
 class TestEffectiveMass:
 	def test_positive(self, simple_model, eta_grid):
 		"""LP effective mass at k=0 must be positive."""
-		k_grid = simple_model.q_grid_si[:10]
+		k_grid = simple_model.q_grid_nat[:10]
 		for eta in eta_grid:
 			m_eff = effective_mass(simple_model, eta, k_grid)
 			assert np.real(m_eff) > 0, f"Negative effective mass for eta={eta}"
 
 	def test_returns_scalar(self, simple_model):
-		k_grid = simple_model.q_grid_si[:10]
+		k_grid = simple_model.q_grid_nat[:10]
 		m_eff  = effective_mass(simple_model, 0.0, k_grid)
 		assert np.ndim(m_eff) == 0
 
 	def test_stable_under_grid_refinement(self, simple_model):
 		"""The local fit should not depend strongly on the sampled near-zero grid."""
-		coarse = np.linspace(0.0, 1e8, 50)
-		dense  = np.linspace(0.0, 1e8, 200)
+		coarse = np.linspace(0.0, 1.0, 50)
+		dense  = np.linspace(0.0, 1.0, 200)
 		m_coarse = effective_mass(simple_model, 0.0, coarse)
 		m_dense  = effective_mass(simple_model, 0.0, dense)
 		assert m_dense == pytest.approx(m_coarse, rel=0.01)
@@ -132,7 +132,7 @@ class TestEffectiveMass:
 class TestPolaritonInteractionStrengthBare:
 	def test_positive(self, simple_model, eta_grid):
 		"""Bare interaction g = (g_ex/N_qw)*|X_LP|^4 is always positive."""
-		k_arr = simple_model.q_grid_si[1:6]
+		k_arr = simple_model.q_grid_nat[1:6]
 		for eta in eta_grid:
 			g = polariton_interaction_strength(
 				simple_model, eta, k_arr, bare=True
@@ -141,7 +141,7 @@ class TestPolaritonInteractionStrengthBare:
 
 	def test_bounded_by_g_ex(self, simple_model):
 		"""g_bare <= g_ex / N_qw since |X_LP|^4 <= 1."""
-		k_arr    = simple_model.q_grid_si[1:6]
+		k_arr    = simple_model.q_grid_nat[1:6]
 		g_upper  = simple_model.p.g_ex / simple_model.p.N_qw
 		g = polariton_interaction_strength(
 			simple_model, 0.0, k_arr, bare=True
@@ -149,7 +149,7 @@ class TestPolaritonInteractionStrengthBare:
 		assert np.all(g <= g_upper + 1e-30)
 
 	def test_output_shape(self, simple_model):
-		k_arr = simple_model.q_grid_si[1:6]
+		k_arr = simple_model.q_grid_nat[1:6]
 		g = polariton_interaction_strength(
 			simple_model, 0.0, k_arr, bare=True
 		)
@@ -160,7 +160,7 @@ class TestPolaritonInteractionStrengthBare:
 		At k=0 (resonance), |X_LP|^4 = (1/√2)^4 = 1/4.
 		So g_bare(k=0) = g_ex / (4 * N_qw).
 		"""
-		k_arr    = simple_model.q_grid_si[:1]
+		k_arr    = simple_model.q_grid_nat[:1]
 		g = polariton_interaction_strength(
 			simple_model, 0.0, k_arr, bare=True
 		)
@@ -179,7 +179,7 @@ class TestChemicalPotential:
 		from polaritons.many_body import chemical_potential
 		mu = chemical_potential(
 			simple_model, eta=0.0,
-			L_terms=100, k_upper=1e8, n_k=1_000,
+			L_terms=100, k_upper=1.0, n_k=1_000,
 		)
 		assert mu < float(np.real(simple_model.E_LP(np.array([0.0]), 0.0)[0]))
 
@@ -187,7 +187,7 @@ class TestChemicalPotential:
 		from polaritons.many_body import chemical_potential
 		mu = chemical_potential(
 			simple_model, eta=0.0,
-			L_terms=100, k_upper=1e8, n_k=1_000,
+			L_terms=100, k_upper=1.0, n_k=1_000,
 		)
 		assert isinstance(mu, float)
 
@@ -197,13 +197,13 @@ class TestScreenedInteraction:
 	def test_screened_less_than_bare(self, simple_model, params_nat):
 		"""Screening reduces interaction: g_screened < g_bare."""
 		from polaritons.many_body import polariton_interaction_strength
-		k_arr = simple_model.q_grid_si[1:4]
+		k_arr = simple_model.q_grid_nat[1:4]
 		g_bare     = polariton_interaction_strength(
 			simple_model, 0.0, k_arr, bare=True,
-			L_terms=100, k_upper=1e8, n_k=1_000,
+			L_terms=100, k_upper=1.0, n_k=1_000,
 		)
 		g_screened = polariton_interaction_strength(
 			simple_model, 0.0, k_arr, bare=False,
-			L_terms=100, k_upper=1e8, n_k=1_000,
+			L_terms=100, k_upper=1.0, n_k=1_000,
 		)
 		assert np.all(g_screened < g_bare)

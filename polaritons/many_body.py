@@ -22,9 +22,9 @@ def effective_mass(model: DispersionModel, eta: float, k_grid: np.ndarray,
 
 	Parameters
 	----------
-	model          : DispersionModel (SI units)
+	model          : DispersionModel (natural units)
 	eta            : disorder parameter
-	k_grid         : dense k array (m^-1) including or starting near 0
+	k_grid         : dense natural-unit k array including or starting near 0
 	disorder_tuned : cavity tuning flag passed to E_LP
 	"""
 	k = np.asarray(k_grid, dtype=float)
@@ -81,7 +81,7 @@ def chemical_potential(
 	eta            : float,
 	beta           : float | None = None,
 	L_terms        : int   = 100,
-	k_upper        : float = 1e8,
+	k_upper        : float = 1.0,
 	n_k            : int   = 100_000,
 	disorder_tuned : bool  = True,
 ) -> float:
@@ -91,17 +91,17 @@ def chemical_potential(
 
 	Parameters
 	----------
-	model          : DispersionModel (SI units)
+	model          : DispersionModel (natural units)
 	eta            : disorder parameter
 	beta           : inverse temperature 1/(k_B*T); defaults to model.p.beta
 	L_terms        : truncation order of the fugacity series
-	k_upper        : upper momentum limit for density integral (m^-1)
+	k_upper        : upper natural momentum limit for density integral
 	n_k            : number of k points in density integral
 	disorder_tuned : cavity tuning flag
 
 	Returns
 	-------
-	mu : chemical potential in eV
+	mu : chemical potential in natural energy units
 	"""
 	p    = model.p
 	beta = beta if beta is not None else p.beta
@@ -162,7 +162,7 @@ def Pi0(
 	eta            : float,
 	beta           : float | None = None,
 	L_terms        : int   = 100,
-	k_upper        : float = 1e8,
+	k_upper        : float = 1.0,
 	n_k            : int   = 100_000,
 	disorder_tuned : bool  = True,
 ) -> float:
@@ -189,22 +189,23 @@ def polariton_interaction_strength(
 	beta           : float | None = None,
 	bare           : bool  = False,
 	L_terms        : int   = 100,
-	k_upper        : float = 1e8,
+	k_upper        : float = 1.0,
 	n_k            : int   = 100_000,
 	disorder_tuned : bool  = True,
 	bubble         : float | None = None,
 ) -> np.ndarray:
 	"""
-	Bare or screened polariton-polariton interaction strength (eV·m²).
+	Bare or screened polariton-polariton interaction strength in natural
+	energy-area units.
 
 	Bare:     g(k)  = (g_ex / N_qw) * |X_LP(k)|^4
 	Screened: g'(k) = g(k) * (1 - g(k)*Π₀) / (1 - 2*g(k)*Π₀)
 
 	Parameters
 	----------
-	model          : DispersionModel (SI units)
+	model          : DispersionModel (natural units)
 	eta            : disorder parameter
-	k_grid         : momentum array (m^-1)
+	k_grid         : natural-unit momentum array
 	beta           : inverse temperature; defaults to model.p.beta
 	bare           : if True, return bare interaction only
 	disorder_tuned : cavity tuning flag

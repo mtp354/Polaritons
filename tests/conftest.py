@@ -42,15 +42,14 @@ def Q_results_zero(eta_grid, q_grid_nat):
 
 
 @pytest.fixture(scope="session")
-def simple_model(params_si, q_grid_nat, eta_grid, Q_results_zero):
+def simple_model(params_nat, q_grid_nat, eta_grid, Q_results_zero):
 	"""
 	Minimal DispersionModel with zero self-energy.
 
-	Uses SI Params.  DispersionModel converts the natural Picard momentum
-	grid and Q self-energy internally.
+	Uses natural-unit Params, natural Picard momentum, and natural Q values.
 
 	With Q=0 everywhere:
 	  E_ex(k, eta) = p.E_gap - p.E_bind + p.hbar^2 * k^2 / (2*p.M)
 	  E_ph(0, eta) == E_ex(0, eta)  by tuned-cavity construction
 	"""
-	return DispersionModel(params_si, q_grid_nat, eta_grid, Q_results_zero)
+	return DispersionModel(params_nat, q_grid_nat, eta_grid, Q_results_zero)

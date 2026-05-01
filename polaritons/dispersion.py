@@ -1,9 +1,12 @@
 """
 Dispersion relations for excitons, photons, and lower polaritons.
 
-Functions here operate in SI units (k in m^-1, energies in eV).
-They read complex Q(k, eta) from saved result files via the io module
-and construct bivariate spline interpolants at load time.
+Functions here operate in natural units:
+	- momentum is measured in units of 1/a
+	- energy is measured in units of E_bind
+
+Plotting and reporting code is responsible for converting these values back
+to SI-derived units such as cm^-1, eV, meV, or micro-eV um^2.
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ class DispersionModel:
 
 	Parameters
 	----------
-	p          : Params in SI units
+	p          : Params in natural units
 	q_grid_nat : momentum grid in natural units (from the Picard solve)
 	eta_grid   : array of disorder parameter values
 	Q_results  : complex array, shape (len(eta_grid), len(q_grid_nat))
@@ -35,15 +38,13 @@ class DispersionModel:
 		eta_grid   : np.ndarray,
 		Q_results  : np.ndarray,
 	):
-		if p.in_natural_units:
-			raise ValueError("DispersionModel expects Params in SI units, not natural units.")
+		if not p.in_natural_units:
+			raise ValueError("DispersionModel expects Params in natural units.")
 
 		self.p        = p
 		self.eta_grid = np.asarray(eta_grid, dtype=float)
 		self.q_grid_nat = np.asarray(q_grid_nat, dtype=float)
-
-		# Convert momentum grid to SI for external callers
-		self.q_grid_si = self.q_grid_nat / p.a
+		self.q_grid = self.q_grid_nat
 
 		# Build bivariate splines  (axes: q_natural, eta)
 		self._spline_real = RectBivariateSpline(
@@ -57,61 +58,59 @@ class DispersionModel:
 	# Self-energy
 	# ------------------------------------------------------------------
 
-	def Q(self, k_si: float | np.ndarray, eta: float) -> complex | np.ndarray:
+	def Q(self, k_nat: float | np.ndarray, eta: float) -> complex | np.ndarray:
 		"""
 		Self-energy Q(k, eta) interpolated from saved results.
 
 		Parameters
 		----------
-		k_si : momentum in m^-1 (SI)
-		eta  : disorder parameter
+		k_nat : momentum in natural units
+		eta   : disorder parameter
 
 		Returns
 		-------
-		Q    : complex energy shift in eV (SI)
+		Q     : complex energy shift in natural energy units
 		"""
-		p    = self.p
-		k_nat = np.asarray(k_si, dtype=float) * p.a
+		k_nat = np.asarray(k_nat, dtype=float)
 		Q_nat = (
 			self._spline_real(k_nat, eta)
 			+ 1j * self._spline_imag(k_nat, eta)
 		)
 		# spline returns 2-D array; squeeze to scalar / 1-D
-		Q_nat = Q_nat.squeeze()
-		return p.E_bind * Q_nat
+		return Q_nat.squeeze()
 
 	# ------------------------------------------------------------------
 	# Dispersion relations
 	# ------------------------------------------------------------------
 
-	def E_ex(self, k_si: float | np.ndarray, eta: float) -> np.ndarray:
-		"""Complex exciton dispersion (eV) at given k (m^-1) and eta."""
+	def E_ex(self, k_nat: float | np.ndarray, eta: float) -> np.ndarray:
+		"""Complex exciton dispersion in natural energy units."""
 		p  = self.p
-		k  = np.asarray(k_si, dtype=float)
+		k  = np.asarray(k_nat, dtype=float)
 		Ek = p.E_gap - p.E_bind + (p.hbar**2 * k**2) / (2.0 * p.M) - self.Q(k, eta)
 		return Ek
 
-	def E_ph(self, k_si: float | np.ndarray, eta: float) -> np.ndarray:
+	def E_ph(self, k_nat: float | np.ndarray, eta: float) -> np.ndarray:
 		"""
 		Photon dispersion  E_ph = sqrt((hbar*c*k/n)^2 + E_0^2)
 
 		Cavity is tuned so E_ph(0) = Re[E_ex(0, eta)].
 		"""
 		p   = self.p
-		k   = np.asarray(k_si, dtype=float)
+		k   = np.asarray(k_nat, dtype=float)
 		E_0 = float(np.real(self.E_ex(0.0, eta)))
 		return np.sqrt((p.hbar * p.c * k / p.n_refr)**2 + E_0**2)
 
-	def E_ph_untuned(self, k_si: float | np.ndarray) -> np.ndarray:
+	def E_ph_untuned(self, k_nat: float | np.ndarray) -> np.ndarray:
 		"""Photon dispersion tuned to the disorder-free (eta=0) exciton energy."""
 		p   = self.p
-		k   = np.asarray(k_si, dtype=float)
+		k   = np.asarray(k_nat, dtype=float)
 		E_0 = float(np.real(self.E_ex(0.0, 0.0)))
 		return np.sqrt((p.hbar * p.c * k / p.n_refr)**2 + E_0**2)
 
 	def E_LP(
 		self,
-		k_si          : np.ndarray,
+		k_nat         : np.ndarray,
 		eta           : float,
 		disorder_tuned: bool = True,
 	) -> np.ndarray:
@@ -123,7 +122,7 @@ class DispersionModel:
 		disorder_tuned : if True, cavity is tuned to Re[E_ex(0,eta)];
 						if False, cavity is tuned to E_ex(0, 0) (disorder-free)
 		"""
-		k    = np.asarray(k_si, dtype=float)
+		k    = np.asarray(k_nat, dtype=float)
 		Eex  = np.asarray(self.E_ex(k, eta),    dtype=complex)
 		Eph  = (
 			np.asarray(self.E_ph(k, eta),        dtype=complex)
