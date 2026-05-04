@@ -91,6 +91,8 @@ class DispersionModel:
 		Q     : complex energy shift in natural energy units
 		"""
 		k_nat = np.asarray(k_nat, dtype=float)
+		if eta == 0.0:
+			return np.zeros_like(k_nat, dtype=complex)
 		return self._Q_splines[self._eta_index(eta)](k_nat)
 
 	# ------------------------------------------------------------------
