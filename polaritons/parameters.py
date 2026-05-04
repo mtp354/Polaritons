@@ -53,6 +53,7 @@ class Params:
 	m_prime         : band-structure constant (dimensionless)
 	n_refr          : refractive index of the cavity medium
 	N_qw            : number of quantum wells
+	M_eff           : effective polariton mass used by real-space routines
 
 	Disorder
 	~~~~~~~~
@@ -98,16 +99,11 @@ class Params:
 	E_unit      : float = field(default=1.0, repr=False)
 	L_unit      : float = field(default=1.0, repr=False)
 
-	# ---- convenience constants (always SI, set in __post_init__) -----------
+	# ---- convenience constants --------------------------------------------
 	c     : float = field(default=_C_SI,    repr=False)
 	hbar  : float = field(default=_HBAR_SI, repr=False)
 	k_B   : float = field(default=_KB_SI,   repr=False)
 	M_eff : float = field(default=_M_EFF_SI,repr=False)
-
-	def __post_init__(self):
-		# Recompute M_eff from m_rest in case m_rest was changed
-		if not self.in_natural_units:
-			self.M_eff = 7.8e-5 * self.m_rest
 
 	# ------------------------------------------------------------------
 	# Derived quantities

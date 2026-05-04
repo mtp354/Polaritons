@@ -148,12 +148,6 @@ class TestSaveLoadRoundtrip:
 		arr = np.load(tmp_path / "nopickle.npy", allow_pickle=False)
 		np.testing.assert_array_equal(arr, sample_array)
 
-	def test_mmap_mode(self, tmp_path, sample_array, p):
-		save_result(sample_array, tmp_path, "mmap", p)
-		loaded, _ = load_result(tmp_path, "mmap", mmap_mode="r")
-		assert isinstance(loaded, np.memmap)
-		np.testing.assert_array_equal(loaded, sample_array)
-
 
 # ---------------------------------------------------------------------------
 # make_sweep_stem
@@ -241,10 +235,3 @@ class TestLoadLatest:
 	def test_raises_on_empty_directory(self, tmp_path):
 		with pytest.raises(FileNotFoundError):
 			load_latest(tmp_path, prefix="missing")
-
-	def test_mmap_mode(self, tmp_path, p):
-		arr = np.array([1.0, 2.0])
-		save_result(arr, tmp_path, "latest_mmap", p)
-		loaded, _ = load_latest(tmp_path, mmap_mode="r")
-		assert isinstance(loaded, np.memmap)
-		np.testing.assert_array_equal(loaded, arr)

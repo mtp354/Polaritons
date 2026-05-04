@@ -25,6 +25,18 @@ class TestParamsDefaults:
 		# Other fields should keep defaults
 		assert p.E_gap_bare == pytest.approx(1.6)
 
+	def test_default_M_eff(self):
+		p = Params()
+		assert p.M_eff == pytest.approx(7.8e-5 * p.m_rest)
+
+	def test_custom_m_rest_does_not_recompute_M_eff(self):
+		p = Params(m_rest=2.0)
+		assert p.M_eff != pytest.approx(7.8e-5 * p.m_rest)
+
+	def test_custom_M_eff_preserved(self):
+		p = Params(M_eff=1.23e-16)
+		assert p.M_eff == pytest.approx(1.23e-16)
+
 
 class TestDerivedProperties:
 	def test_E_gap(self):
@@ -117,6 +129,11 @@ class TestToNatural:
 		ratio_si  = p_si.E_gap  / p_si.E_bind
 		ratio_nat = p_nat.E_gap / p_nat.E_bind
 		assert ratio_nat == pytest.approx(ratio_si)
+
+	def test_M_eff_converted_from_stored_value(self):
+		p_si = Params(M_eff=1.23e-16)
+		p_nat = p_si.to_natural()
+		assert p_nat.M_eff == pytest.approx(p_si.M_eff * p_si.a**2 / p_si.E_bind)
 
 
 class TestToDict:

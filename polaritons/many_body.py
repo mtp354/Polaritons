@@ -173,12 +173,8 @@ def Pi0(
 	"""
 	p    = model.p
 	beta = beta if beta is not None else p.beta
-	mu   = chemical_potential(model, eta, beta=beta, L_terms=L_terms,
-							  k_upper=k_upper, n_k=n_k,
-							  disorder_tuned=disorder_tuned)
-	m_eff = effective_mass(model, eta,
-						   k_grid=np.linspace(0, k_upper, n_k),
-						   disorder_tuned=disorder_tuned)
+	mu   = chemical_potential(model, eta, beta=beta, L_terms=L_terms, k_upper=k_upper, n_k=n_k, disorder_tuned=disorder_tuned)
+	m_eff = effective_mass(model, eta, k_grid=np.linspace(0, k_upper, n_k), disorder_tuned=disorder_tuned)
 	return (-m_eff / (np.pi * p.hbar**2)) / (np.exp(-mu * beta) - 1.0)
 
 

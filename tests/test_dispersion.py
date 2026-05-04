@@ -42,6 +42,11 @@ class TestQInterpolation:
 		result = simple_model.Q(k_arr, 0.0)
 		assert result.shape == (5,)
 
+	def test_Q_output_1d_for_singleton_array_input(self, simple_model):
+		k_arr = simple_model.q_grid_nat[:1]
+		result = simple_model.Q(k_arr, 0.0)
+		assert result.shape == (1,)
+
 	def test_Q_returns_natural_energy(self, params_nat, q_grid_nat, eta_grid):
 		Q_nat = np.ones((len(eta_grid), len(q_grid_nat)), dtype=complex) * (2.0 + 3.0j)
 		model = DispersionModel(params_nat, q_grid_nat, eta_grid, Q_nat)
@@ -54,6 +59,22 @@ class TestQInterpolation:
 		idx = 5
 		result = model.Q(q_grid_nat[idx], eta_grid[1])
 		assert result == pytest.approx(q_grid_nat[idx])
+
+	def test_Q_selects_fixed_eta_slice(self, params_nat, q_grid_nat, eta_grid):
+		Q_nat = np.empty((len(eta_grid), len(q_grid_nat)), dtype=complex)
+		for i, eta in enumerate(eta_grid):
+			Q_nat[i] = eta + q_grid_nat
+		model = DispersionModel(params_nat, q_grid_nat, eta_grid, Q_nat)
+
+		result = model.Q(q_grid_nat[4], eta_grid[2])
+		assert result == pytest.approx(eta_grid[2] + q_grid_nat[4])
+
+	def test_Q_rejects_unsolved_eta(self, params_nat, q_grid_nat, eta_grid):
+		Q_nat = np.zeros((len(eta_grid), len(q_grid_nat)), dtype=complex)
+		model = DispersionModel(params_nat, q_grid_nat, eta_grid, Q_nat)
+
+		with pytest.raises(ValueError, match="only interpolated over k"):
+			model.Q(q_grid_nat[4], 0.25)
 
 
 class TestEEx:
@@ -162,9 +183,9 @@ class TestDispersionModelConstruction:
 		np.testing.assert_allclose(simple_model.q_grid_nat, q_grid_nat)
 
 	def test_mismatched_Q_raises(self, params_nat, q_grid_nat, eta_grid):
-		"""Providing Q_results with wrong shape should raise inside spline."""
+		"""Providing Q_results with wrong shape should raise at construction."""
 		bad_Q = np.zeros((len(eta_grid), len(q_grid_nat) + 1), dtype=complex)
-		with pytest.raises(Exception):
+		with pytest.raises(ValueError, match="Q_results must have shape"):
 			DispersionModel(params_nat, q_grid_nat, eta_grid, bad_Q)
 
 	def test_si_params_raise(self, params_si, q_grid_nat, eta_grid, Q_results_zero):

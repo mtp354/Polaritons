@@ -24,7 +24,7 @@ def params_nat(params_si):
 def eta_grid():
 	"""Five disorder values used to build DispersionModel fixture.
 
-	RectBivariateSpline requires >= 4 points per axis (default cubic kx=ky=3).
+	DispersionModel builds one momentum spline per eta value.
 	"""
 	return np.array([0.0, 0.5, 1.0, 1.5, 2.0])
 

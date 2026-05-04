@@ -115,14 +115,9 @@ def save_result(
 def load_result(
 	directory : str | Path,
 	stem      : str,
-	mmap_mode : str | None = None,
 ) -> tuple[np.ndarray, dict]:
 	"""
 	Load array and metadata from `<directory>/<stem>.npy` + `_meta.json`.
-
-	Parameters
-	----------
-	mmap_mode : optional NumPy mmap mode, e.g. "r", for large arrays
 
 	Returns
 	-------
@@ -133,7 +128,7 @@ def load_result(
 	npy_path  = directory / f"{stem}.npy"
 	json_path = directory / f"{stem}_meta.json"
 
-	array = np.load(npy_path, allow_pickle=False, mmap_mode=mmap_mode)
+	array = np.load(npy_path, allow_pickle=False)
 	with open(json_path) as f:
 		meta = json.load(f)
 	return array, meta
@@ -171,7 +166,6 @@ def list_results(directory: str | Path, prefix: str = "") -> list[dict]:
 def load_latest(
 	directory : str | Path,
 	prefix    : str = "",
-	mmap_mode : str | None = None,
 ) -> tuple[np.ndarray, dict]:
 	"""
 	Load the most recently saved result (by `saved_at` timestamp) whose
@@ -184,4 +178,4 @@ def load_latest(
 	)
 	results.sort(key=lambda r: r["saved_at"], reverse=True)
 	stem = results[0]["_stem"]
-	return load_result(directory, stem, mmap_mode=mmap_mode)
+	return load_result(directory, stem)

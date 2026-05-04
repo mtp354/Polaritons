@@ -11,7 +11,7 @@ to SI-derived units such as cm^-1, eV, meV, or micro-eV um^2.
 
 from __future__ import annotations
 import numpy as np
-from scipy.interpolate import RectBivariateSpline
+from scipy.interpolate import CubicSpline
 from .parameters import Params
 
 
@@ -22,6 +22,9 @@ from .parameters import Params
 class DispersionModel:
 	"""
 	Encapsulates E_ex, E_ph, E_LP given a loaded set of Q(k, eta) results.
+
+	Q(k) is interpolated only along the momentum axis.  The disorder parameter
+	eta selects one of the solved eta slices; it is not interpolated.
 
 	Parameters
 	----------
@@ -46,13 +49,29 @@ class DispersionModel:
 		self.q_grid_nat = np.asarray(q_grid_nat, dtype=float)
 		self.q_grid = self.q_grid_nat
 
-		# Build bivariate splines  (axes: q_natural, eta)
-		self._spline_real = RectBivariateSpline(
-			self.q_grid_nat, self.eta_grid, np.real(Q_results).T
-		)
-		self._spline_imag = RectBivariateSpline(
-			self.q_grid_nat, self.eta_grid, np.imag(Q_results).T
-		)
+		Q_results = np.asarray(Q_results, dtype=complex)
+		expected_shape = (len(self.eta_grid), len(self.q_grid_nat))
+		if Q_results.shape != expected_shape:
+			raise ValueError(
+				f"Q_results must have shape {expected_shape}, got {Q_results.shape}."
+			)
+		if self.q_grid_nat.ndim != 1 or np.any(np.diff(self.q_grid_nat) <= 0.0):
+			raise ValueError("q_grid_nat must be a strictly increasing 1-D array.")
+
+		# Build one k-only spline for each solved eta value.
+		self._Q_splines = [
+			CubicSpline(self.q_grid_nat, Q_results[i], extrapolate=True)
+			for i in range(len(self.eta_grid))
+		]
+
+	def _eta_index(self, eta: float) -> int:
+		"""Index of an already-solved eta value."""
+		matches = np.flatnonzero(np.isclose(self.eta_grid, eta, rtol=1e-12, atol=1e-12))
+		if len(matches) != 1:
+			raise ValueError(
+				f"eta={eta!r} is not in eta_grid; Q is only interpolated over k."
+			)
+		return int(matches[0])
 
 	# ------------------------------------------------------------------
 	# Self-energy
@@ -60,24 +79,19 @@ class DispersionModel:
 
 	def Q(self, k_nat: float | np.ndarray, eta: float) -> complex | np.ndarray:
 		"""
-		Self-energy Q(k, eta) interpolated from saved results.
+		Self-energy Q(k, eta) interpolated over k for a solved eta value.
 
 		Parameters
 		----------
 		k_nat : momentum in natural units
-		eta   : disorder parameter
+		eta   : solved disorder parameter value
 
 		Returns
 		-------
 		Q     : complex energy shift in natural energy units
 		"""
 		k_nat = np.asarray(k_nat, dtype=float)
-		Q_nat = (
-			self._spline_real(k_nat, eta)
-			+ 1j * self._spline_imag(k_nat, eta)
-		)
-		# spline returns 2-D array; squeeze to scalar / 1-D
-		return Q_nat.squeeze()
+		return self._Q_splines[self._eta_index(eta)](k_nat)
 
 	# ------------------------------------------------------------------
 	# Dispersion relations
