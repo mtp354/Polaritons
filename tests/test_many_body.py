@@ -134,26 +134,21 @@ class TestPolaritonInteractionStrengthBare:
 		"""Bare interaction g = (g_ex/N_qw)*|X_LP|^4 is always positive."""
 		k_arr = simple_model.q_grid_nat[1:6]
 		for eta in eta_grid:
-			g = polariton_interaction_strength(
-				simple_model, eta, k_arr, bare=True
-			)
+			g, _ = polariton_interaction_strength(simple_model, eta, k_arr, bubble=0.0)
 			assert np.all(g > 0), f"Negative bare interaction for eta={eta}"
 
 	def test_bounded_by_g_ex(self, simple_model):
 		"""g_bare <= g_ex / N_qw since |X_LP|^4 <= 1."""
 		k_arr    = simple_model.q_grid_nat[1:6]
 		g_upper  = simple_model.p.g_ex / simple_model.p.N_qw
-		g = polariton_interaction_strength(
-			simple_model, 0.0, k_arr, bare=True
-		)
+		g, _ = polariton_interaction_strength(simple_model, 0.0, k_arr, bubble=0.0)
 		assert np.all(g <= g_upper + 1e-30)
 
 	def test_output_shape(self, simple_model):
 		k_arr = simple_model.q_grid_nat[1:6]
-		g = polariton_interaction_strength(
-			simple_model, 0.0, k_arr, bare=True
-		)
-		assert g.shape == k_arr.shape
+		g_bare, g_screened = polariton_interaction_strength(simple_model, 0.0, k_arr, bubble=0.0)
+		assert g_bare.shape == k_arr.shape
+		assert g_screened.shape == k_arr.shape
 
 	def test_resonance_value(self, simple_model):
 		"""
@@ -161,9 +156,7 @@ class TestPolaritonInteractionStrengthBare:
 		So g_bare(k=0) = g_ex / (4 * N_qw).
 		"""
 		k_arr    = simple_model.q_grid_nat[:1]
-		g = polariton_interaction_strength(
-			simple_model, 0.0, k_arr, bare=True
-		)
+		g, _ = polariton_interaction_strength(simple_model, 0.0, k_arr, bubble=0.0)
 		expected = simple_model.p.g_ex / (4.0 * simple_model.p.N_qw)
 		assert g[0] == pytest.approx(expected, rel=1e-5)
 
@@ -198,12 +191,8 @@ class TestScreenedInteraction:
 		"""Screening reduces interaction: g_screened < g_bare."""
 		from polaritons.many_body import polariton_interaction_strength
 		k_arr = simple_model.q_grid_nat[1:4]
-		g_bare     = polariton_interaction_strength(
-			simple_model, 0.0, k_arr, bare=True,
-			L_terms=100, k_upper=1.0, n_k=1_000,
-		)
-		g_screened = polariton_interaction_strength(
-			simple_model, 0.0, k_arr, bare=False,
+		g_bare, g_screened = polariton_interaction_strength(
+			simple_model, 0.0, k_arr,
 			L_terms=100, k_upper=1.0, n_k=1_000,
 		)
 		assert np.all(g_screened < g_bare)

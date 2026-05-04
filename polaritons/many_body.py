@@ -183,15 +183,14 @@ def polariton_interaction_strength(
 	eta            : float,
 	k_grid         : np.ndarray,
 	beta           : float | None = None,
-	bare           : bool  = False,
 	L_terms        : int   = 100,
 	k_upper        : float = 1.0,
 	n_k            : int   = 100_000,
 	disorder_tuned : bool  = True,
 	bubble         : float | None = None,
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray]:
 	"""
-	Bare or screened polariton-polariton interaction strength in natural
+	Bare and screened polariton-polariton interaction strengths in natural
 	energy-area units.
 
 	Bare:     g(k)  = (g_ex / N_qw) * |X_LP(k)|^4
@@ -203,22 +202,18 @@ def polariton_interaction_strength(
 	eta            : disorder parameter
 	k_grid         : natural-unit momentum array
 	beta           : inverse temperature; defaults to model.p.beta
-	bare           : if True, return bare interaction only
 	disorder_tuned : cavity tuning flag
 	bubble         : optional precomputed Pi0 value for repeated calls
 
 	Returns
 	-------
-	g : real array, shape (len(k_grid),)
+	g_bare, g_screened : real arrays, shape matching k_grid
 	"""
 	p        = model.p
 	beta     = beta if beta is not None else p.beta
 	E_lp     = model.E_LP(k_grid, eta, disorder_tuned=disorder_tuned)
 	X_LP, _  = hopfield_coefficients(model, eta, k_grid, E_lp)
 	g_bare   = (p.g_ex / p.N_qw) * np.abs(X_LP)**4
-
-	if bare:
-		return np.real(g_bare)
 
 	bubble_value = (
 		Pi0(model, eta, beta=beta, L_terms=L_terms,
@@ -227,4 +222,4 @@ def polariton_interaction_strength(
 		else bubble
 	)
 	g_screened = g_bare * (1.0 - g_bare * bubble_value) / (1.0 - 2.0 * g_bare * bubble_value)
-	return np.real(g_screened)
+	return np.real(g_bare), np.real(g_screened)
