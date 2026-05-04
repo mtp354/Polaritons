@@ -194,5 +194,6 @@ class TestScreenedInteraction:
 		g_bare, g_screened = polariton_interaction_strength(
 			simple_model, 0.0, k_arr,
 			L_terms=100, k_upper=1.0, n_k=1_000,
+			k_upper_mass=1e-3, n_k_mass=16,
 		)
 		assert np.all(g_screened < g_bare)

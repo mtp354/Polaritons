@@ -164,17 +164,27 @@ def Pi0(
 	L_terms        : int   = 100,
 	k_upper        : float = 1.0,
 	n_k            : int   = 100_000,
+	k_upper_mass   : float | None = None,
+	n_k_mass       : int   = 64,
 	disorder_tuned : bool  = True,
 ) -> float:
 	"""
 	Zero-frequency Matsubara bubble Π₀ at finite temperature T.
 
 		Π₀ = -(m*_LP / pi*hbar^2) * 1/(exp(-mu*beta) - 1)
+
+	`n_k` controls the chemical-potential density integral.  The effective
+	mass is a local k=0 fit, so it uses a separate, smaller near-zero grid.
 	"""
 	p    = model.p
 	beta = beta if beta is not None else p.beta
 	mu   = chemical_potential(model, eta, beta=beta, L_terms=L_terms, k_upper=k_upper, n_k=n_k, disorder_tuned=disorder_tuned)
-	m_eff = effective_mass(model, eta, k_grid=np.linspace(0, k_upper, n_k), disorder_tuned=disorder_tuned)
+	k_upper_mass = min(k_upper, 1e-3) if k_upper_mass is None else k_upper_mass
+	m_eff = effective_mass(
+		model, eta,
+		k_grid=np.linspace(0.0, k_upper_mass, n_k_mass),
+		disorder_tuned=disorder_tuned,
+	)
 	return (-m_eff / (np.pi * p.hbar**2)) / (np.exp(-mu * beta) - 1.0)
 
 
@@ -186,6 +196,8 @@ def polariton_interaction_strength(
 	L_terms        : int   = 100,
 	k_upper        : float = 1.0,
 	n_k            : int   = 100_000,
+	k_upper_mass   : float | None = None,
+	n_k_mass       : int   = 64,
 	disorder_tuned : bool  = True,
 	bubble         : float | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -202,6 +214,8 @@ def polariton_interaction_strength(
 	eta            : disorder parameter
 	k_grid         : natural-unit momentum array
 	beta           : inverse temperature; defaults to model.p.beta
+	n_k            : momentum grid size for chemical-potential integration
+	n_k_mass       : local near-zero grid size for effective-mass fitting
 	disorder_tuned : cavity tuning flag
 	bubble         : optional precomputed Pi0 value for repeated calls
 
@@ -217,7 +231,9 @@ def polariton_interaction_strength(
 
 	bubble_value = (
 		Pi0(model, eta, beta=beta, L_terms=L_terms,
-			k_upper=k_upper, n_k=n_k, disorder_tuned=disorder_tuned)
+			k_upper=k_upper, n_k=n_k,
+			k_upper_mass=k_upper_mass, n_k_mass=n_k_mass,
+			disorder_tuned=disorder_tuned)
 		if bubble is None
 		else bubble
 	)
