@@ -27,7 +27,9 @@ def gaussian_correlated_disorder(
 	Generate a 2-D Gaussian-correlated disorder potential V(x,y) on an N×N grid.
 
 	The potential is zero-mean with standard deviation `sigma`.
-	The spatial correlation function is  <V(r)V(r')> ∝ exp(-|r-r'|^2 / xi^2).
+	The spatial correlation function is  <V(r)V(r')> ∝ exp(-|r-r'|^2 / (2 xi^2)),
+	which is consistent with the FT convention used by the disorder kernel
+	in polaritons.kernel (factor exp(-0.5 * xi^2 * p^2)).
 
 	Parameters
 	----------
@@ -128,6 +130,16 @@ def ipr(psi: np.ndarray, dx: float) -> float:
 	a perfectly localised state has IPR = 1.
 	"""
 	return float(np.sum(np.abs(psi)**4) * dx**2)
+
+
+def mode_area(psi: np.ndarray, dx: float) -> float:
+	"""
+	Effective mode area  A_eff = 1 / IPR.
+
+	For a delocalised state on a domain of area A, A_eff = A; for a
+	tightly-localised state A_eff is small (the localisation area).
+	"""
+	return 1.0 / ipr(psi, dx)
 
 
 # ---------------------------------------------------------------------------

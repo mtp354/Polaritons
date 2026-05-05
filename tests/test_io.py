@@ -235,3 +235,22 @@ class TestLoadLatest:
 	def test_raises_on_empty_directory(self, tmp_path):
 		with pytest.raises(FileNotFoundError):
 			load_latest(tmp_path, prefix="missing")
+
+
+# ---------------------------------------------------------------------------
+# Tighter prefix glob: prefix must be followed by an underscore so that
+# stems with overlapping prefixes (e.g. "K_..." vs "Kappa_...") do not
+# bleed into each other.
+# ---------------------------------------------------------------------------
+
+class TestListResultsPrefixIsolation:
+	def test_prefix_K_does_not_match_Kappa(self, tmp_path, p):
+		save_result(np.array([1.0]), tmp_path, "K_one",      p)
+		save_result(np.array([2.0]), tmp_path, "Kappa_two",  p)
+		assert {r["_stem"] for r in list_results(tmp_path, prefix="K")} == {"K_one"}
+		assert {r["_stem"] for r in list_results(tmp_path, prefix="Kappa")} == {"Kappa_two"}
+
+	def test_empty_prefix_lists_all(self, tmp_path, p):
+		save_result(np.array([1.0]), tmp_path, "K_one",     p)
+		save_result(np.array([2.0]), tmp_path, "Kappa_two", p)
+		assert len(list_results(tmp_path)) == 2

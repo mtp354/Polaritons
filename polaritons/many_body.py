@@ -9,8 +9,14 @@ Finite-temperature many-body quantities:
 
 from __future__ import annotations
 import numpy as np
+from scipy.optimize import brentq
 from .parameters import Params
 from .dispersion import DispersionModel
+
+
+# np.trapezoid was added in NumPy 2.0; np.trapz is deprecated there but still
+# present.  Pick the modern name when available, falling back transparently.
+_trapz = getattr(np, "trapezoid", None) or np.trapz  # type: ignore[attr-defined]
 
 
 def effective_mass(model: DispersionModel, eta: float, k_grid: np.ndarray,
@@ -70,7 +76,7 @@ def _fugacity_series_coefficients(
 		l_stop  = min(l_start + block_size, L_terms + 1)
 		l_block = np.arange(l_start, l_stop)[:, None]
 		exp_block = ks[None, :] * np.exp(-l_block * beta * dE_vals[None, :])
-		block_coeffs = np.trapz(exp_block, ks, axis=1) / float(2.0 * np.pi) # type: ignore
+		block_coeffs = _trapz(exp_block, ks, axis=1) / (2.0 * np.pi)
 		a[idx:idx + len(block_coeffs)] = block_coeffs
 		idx += len(block_coeffs)
 	return a
@@ -118,21 +124,12 @@ def chemical_potential(
 		)
 
 	powers = np.arange(1, L_terms + 1)
-
-	def S(z):
-		return np.dot(a, z**powers) - p.concentration
-
-	z_lo, z_hi = 0.0, 1.0 - 1e-14
-	for _ in range(100):
-		z_mid = 0.5 * (z_lo + z_hi)
-		if S(z_mid) >= 0.0:
-			z_hi = z_mid
-		else:
-			z_lo = z_mid
-		if abs(S(z_mid)) <= 1e-10 * max(p.concentration, 1.0):
-			break
-
-	z = 0.5 * (z_lo + z_hi)
+	z_hi   = 1.0 - 1e-14
+	z      = brentq(
+		lambda z: float(np.dot(a, z**powers) - p.concentration),
+		0.0, z_hi,
+		xtol=1e-14, rtol=1e-12, maxiter=200,
+	)
 	return np.log(z) / beta
 
 

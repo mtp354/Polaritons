@@ -197,3 +197,29 @@ class TestScreenedInteraction:
 			k_upper_mass=1e-3, n_k_mass=16,
 		)
 		assert np.all(g_screened < g_bare)
+
+
+# ---------------------------------------------------------------------------
+# Chemical potential smoke test (fast: small grid, few terms)
+# ---------------------------------------------------------------------------
+
+class TestChemicalPotentialSmoke:
+	def test_mu_negative_for_bose_gas(self, simple_model):
+		"""For a non-degenerate Bose gas, the chemical potential is negative."""
+		from polaritons.many_body import chemical_potential
+		# Reduce concentration so few series terms suffice on this small grid.
+		small_p = simple_model.p
+		# build a fresh model with the same p but smaller target density via
+		# explicitly passing override args; chemical_potential picks p.concentration,
+		# so monkey-patch a copy of the dataclass.
+		from dataclasses import replace
+		p_low = replace(small_p, concentration=1e-6)
+		# DispersionModel re-uses p as-is; create a tiny shim by replacing p attr.
+		simple_model.p = p_low
+		try:
+			mu = chemical_potential(
+				simple_model, eta=0.0, L_terms=20, k_upper=0.5, n_k=200,
+			)
+		finally:
+			simple_model.p = small_p
+		assert mu < 0.0

@@ -191,3 +191,50 @@ class TestDispersionModelConstruction:
 	def test_si_params_raise(self, params_si, q_grid_nat, eta_grid, Q_results_zero):
 		with pytest.raises(ValueError, match="natural units"):
 			DispersionModel(params_si, q_grid_nat, eta_grid, Q_results_zero)
+
+
+class TestELPAnalyticAgreesWithEigvals:
+	"""
+	Regression test: closed-form LP root must match np.linalg.eigvals on the
+	2x2 [[Eex, Omega],[Omega, Eph]] block element-wise.
+	"""
+
+	def test_matches_eigvals_real_Q(self, params_nat, q_grid_nat, eta_grid):
+		# Non-zero, real Q so that eigenvalues are real.
+		rng = np.random.default_rng(0)
+		Q_real = rng.normal(size=(len(eta_grid), len(q_grid_nat)))
+		model = DispersionModel(params_nat, q_grid_nat, eta_grid, Q_real.astype(complex))
+
+		k_arr = model.q_grid_nat[1:]
+		for eta in eta_grid:
+			Eex = np.asarray(model.E_ex(k_arr, eta), dtype=complex)
+			Eph = np.asarray(model.E_ph(k_arr, eta), dtype=complex)
+			Omega = model.p.Omega
+			expected = np.empty_like(Eex)
+			for i in range(len(k_arr)):
+				vals = np.linalg.eigvals(
+					np.array([[Eex[i], Omega], [Omega, Eph[i]]], dtype=complex)
+				)
+				expected[i] = vals[np.argmin(vals.real)]
+			got = model.E_LP(k_arr, eta)
+			np.testing.assert_allclose(got, expected, rtol=1e-12, atol=1e-12)
+
+	def test_matches_eigvals_complex_Q(self, params_nat, q_grid_nat, eta_grid):
+		# Complex Q -> complex Eex; LP is the lower-real-part root.
+		rng = np.random.default_rng(1)
+		Q = (rng.normal(size=(len(eta_grid), len(q_grid_nat)))
+		     + 1j * rng.normal(size=(len(eta_grid), len(q_grid_nat))))
+		model = DispersionModel(params_nat, q_grid_nat, eta_grid, Q.astype(complex))
+
+		k_arr = model.q_grid_nat[1:]
+		for eta in eta_grid:
+			Eex = np.asarray(model.E_ex(k_arr, eta), dtype=complex)
+			Eph = np.asarray(model.E_ph(k_arr, eta), dtype=complex)
+			Omega = model.p.Omega
+			# Compare against the closed-form root with the principal sqrt.
+			half_sum  = 0.5 * (Eex + Eph)
+			half_diff = 0.5 * (Eex - Eph)
+			disc      = np.sqrt(half_diff**2 + Omega**2)
+			expected  = half_sum - disc
+			got = model.E_LP(k_arr, eta)
+			np.testing.assert_allclose(got, expected, rtol=1e-12, atol=1e-12)

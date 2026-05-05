@@ -154,7 +154,8 @@ def list_results(directory: str | Path, prefix: str = "") -> list[dict]:
 	"""
 	directory = Path(directory)
 	results = []
-	for json_path in sorted(directory.glob(f"{prefix}*_meta.json")):
+	glob_pat = f"{prefix}_*_meta.json" if prefix else "*_meta.json"
+	for json_path in sorted(directory.glob(glob_pat)):
 		with open(json_path) as f:
 			meta = json.load(f)
 		meta["_stem"] = json_path.stem.replace("_meta", "")

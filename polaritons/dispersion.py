@@ -147,19 +147,10 @@ class DispersionModel:
 		)
 		Omega = self.p.Omega
 
-		if k.ndim == 0:
-			vals = np.linalg.eigvals(
-				np.array([[Eex, Omega], [Omega, Eph]], dtype=complex)
-			)
-			return vals[np.argmin(vals.real)]
-
-		out = np.empty_like(Eex, dtype=complex)
-		for i in range(len(k)):
-			vals = np.linalg.eigvals(
-				np.array([[Eex[i], Omega], [Omega, Eph[i]]], dtype=complex)
-			)
-			if i == 0:
-				out[i] = vals[np.argmin(vals.real)]
-			else:
-				out[i] = vals[np.argmin(np.abs(vals - out[i-1]))]
-		return out
+		# Closed-form lower root of the 2x2 [[Eex, Omega],[Omega, Eph]] block.
+		# E_+/- = (Eex + Eph)/2 +/- sqrt(((Eex - Eph)/2)^2 + Omega^2)
+		# Lower polariton is the minus branch (continuous in k by construction).
+		half_sum  = 0.5 * (Eex + Eph)
+		half_diff = 0.5 * (Eex - Eph)
+		disc      = np.sqrt(half_diff * half_diff + Omega * Omega)
+		return half_sum - disc

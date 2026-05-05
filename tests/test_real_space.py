@@ -11,6 +11,7 @@ from polaritons.real_space import (
 	solve_low_modes,
 	normalize_mode,
 	ipr,
+	mode_area,
 	g_eff_lowest_mode,
 )
 
@@ -240,6 +241,50 @@ class TestIPR:
 	def test_returns_float(self, dx_small):
 		psi_n = normalize_mode(np.ones((N_SMALL, N_SMALL)), dx_small)
 		assert isinstance(ipr(psi_n, dx_small), float)
+
+
+# ---------------------------------------------------------------------------
+# mode_area
+# ---------------------------------------------------------------------------
+
+class TestModeArea:
+	def test_uniform_state_equals_box_area(self, dx_small):
+		"""For a uniform normalised state IPR = 1/L^2 so mode_area = L^2."""
+		psi_n = normalize_mode(np.ones((N_SMALL, N_SMALL)), dx_small)
+		assert mode_area(psi_n, dx_small) == pytest.approx(L_SMALL**2, rel=1e-8)
+
+	def test_inverse_of_ipr(self, dx_small):
+		rng = np.random.default_rng(13)
+		psi_n = normalize_mode(rng.normal(size=(N_SMALL, N_SMALL)), dx_small)
+		assert mode_area(psi_n, dx_small) == pytest.approx(1.0 / ipr(psi_n, dx_small), rel=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# Gaussian disorder correlation length (empirical fit of autocorrelation)
+# ---------------------------------------------------------------------------
+
+class TestCorrelationLength:
+	def test_radial_autocorr_matches_documented_convention(self):
+		"""
+		Documented convention: <V(r)V(r')> ∝ exp(-|r-r'|^2 / (2 xi^2)).
+
+		At r = xi the normalised autocorr should be exp(-1/2) ≈ 0.6065.
+		Tests a single large realisation; tolerance accounts for finite-N noise.
+		"""
+		N, L, xi = 256, 1.0, 0.05
+		dx = L / N
+		V  = gaussian_correlated_disorder(N=N, L=L, sigma=1.0, xi=xi, seed=0)
+		# Wiener-Khinchin: autocorrelation = IFFT(|FFT(V)|^2) / N^2
+		C = np.fft.ifftn(np.abs(np.fft.fftn(V))**2).real
+		C /= C[0, 0]  # normalise so C(0)=1
+
+		# Look along the +x axis up to half the box.
+		half = N // 2
+		r    = np.arange(half) * dx
+		Cx   = C[:half, 0]
+
+		idx = int(round(xi / dx))
+		assert Cx[idx] == pytest.approx(np.exp(-0.5), abs=0.05)
 
 
 # ---------------------------------------------------------------------------
