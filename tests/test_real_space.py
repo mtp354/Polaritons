@@ -13,6 +13,15 @@ from polaritons.real_space import (
 	ipr,
 	mode_area,
 	g_eff_lowest_mode,
+	RealSpaceConfig,
+	exciton_hamiltonian,
+	plane_wave,
+	lattice_kinetic_energy,
+	continuum_k,
+	integer_shells,
+	green_for_realization,
+	averaged_green_and_Q,
+	sweep_disorder_self_energy,
 )
 
 from polaritons.parameters import Params
@@ -329,3 +338,221 @@ class TestGEffLowestMode:
 		g_weak   = g_eff_lowest_mode(**kw, sigma=1e-6)
 		g_strong = g_eff_lowest_mode(**kw, sigma=1.0)
 		assert g_strong > g_weak
+
+
+# ===========================================================================
+# Q-extraction pipeline (RealSpaceConfig + Green-function utilities)
+# ===========================================================================
+
+@pytest.fixture(scope="module")
+def qcfg():
+	# Small periodic box: N=8 keeps the dense N^2 x N^2 = 64x64 inversion fast
+	# while still resolving a few k-shells.
+	return RealSpaceConfig(N=8, L=1.0, M=1.0, hbar=1.0, epsilon=1e-3)
+
+
+# ---------------------------------------------------------------------------
+# laplacian_2d periodic mode
+# ---------------------------------------------------------------------------
+
+class TestPeriodicLaplacian:
+	def test_periodic_row_sums_zero(self):
+		L = laplacian_2d(8, 0.1, periodic=True).toarray()
+		# Every row of a periodic FD Laplacian sums to zero.
+		np.testing.assert_allclose(L.sum(axis=1), 0.0, atol=1e-10)
+
+	def test_periodic_symmetric(self):
+		L = laplacian_2d(8, 0.1, periodic=True)
+		np.testing.assert_allclose((L - L.T).toarray(), 0.0, atol=1e-12)
+
+	def test_periodic_differs_from_open(self):
+		Lp = laplacian_2d(8, 0.1, periodic=True).toarray()
+		Lo = laplacian_2d(8, 0.1, periodic=False).toarray()
+		assert not np.allclose(Lp, Lo)
+
+
+# ---------------------------------------------------------------------------
+# RealSpaceConfig
+# ---------------------------------------------------------------------------
+
+class TestRealSpaceConfig:
+	def test_dx_property(self):
+		c = RealSpaceConfig(N=10, L=2.0, M=1.0)
+		assert c.dx == pytest.approx(0.2)
+
+	def test_frozen(self):
+		c = RealSpaceConfig(N=10, L=2.0, M=1.0)
+		with pytest.raises(Exception):
+			c.N = 20  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# plane_wave
+# ---------------------------------------------------------------------------
+
+class TestPlaneWave:
+	def test_normalised(self, qcfg):
+		phi = plane_wave(qcfg, 1, 0)
+		# Discrete L^2 norm with measure dx^2 should equal 1.
+		norm2 = qcfg.dx**2 * np.vdot(phi, phi).real
+		assert norm2 == pytest.approx(1.0, rel=1e-12)
+
+	def test_orthogonal_distinct_modes(self, qcfg):
+		p1 = plane_wave(qcfg, 1, 0)
+		p2 = plane_wave(qcfg, 0, 1)
+		overlap = qcfg.dx**2 * np.vdot(p1, p2)
+		assert abs(overlap) == pytest.approx(0.0, abs=1e-12)
+
+	def test_zero_mode_uniform(self, qcfg):
+		phi = plane_wave(qcfg, 0, 0)
+		expected = 1.0 / qcfg.L
+		np.testing.assert_allclose(phi, expected, atol=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# Lattice/continuum kinetic energies
+# ---------------------------------------------------------------------------
+
+class TestKineticEnergies:
+	def test_lattice_zero_at_zero_momentum(self, qcfg):
+		assert lattice_kinetic_energy(qcfg, 0, 0) == pytest.approx(0.0, abs=1e-12)
+
+	def test_continuum_zero_at_zero_momentum(self, qcfg):
+		assert continuum_k(qcfg, 0, 0) == pytest.approx(0.0, abs=1e-12)
+
+	def test_continuum_isotropic(self, qcfg):
+		assert continuum_k(qcfg, 1, 0) == pytest.approx(continuum_k(qcfg, 0, 1))
+
+	def test_lattice_matches_continuum_small_n(self, qcfg):
+		"""For small (nx, ny) the lattice dispersion → ħ² k² / 2M."""
+		nx, ny = 1, 0
+		k = continuum_k(qcfg, nx, ny)
+		eps_cont = qcfg.hbar**2 * k**2 / (2 * qcfg.M)
+		eps_lat  = lattice_kinetic_energy(qcfg, nx, ny)
+		assert eps_lat == pytest.approx(eps_cont, rel=0.1)
+
+
+# ---------------------------------------------------------------------------
+# integer_shells
+# ---------------------------------------------------------------------------
+
+class TestIntegerShells:
+	def test_first_shell_is_zero(self):
+		shells = integer_shells(n_shells=4)
+		assert shells[0] == [(0, 0)]
+
+	def test_exclude_zero(self):
+		shells = integer_shells(n_shells=3, include_zero=False)
+		# (0,0) must not appear in any shell.
+		for shell in shells:
+			assert (0, 0) not in shell
+
+	def test_shells_grouped_by_n2(self):
+		shells = integer_shells(n_shells=5)
+		for shell in shells:
+			n2_values = {nx*nx + ny*ny for nx, ny in shell}
+			assert len(n2_values) == 1
+
+	def test_shells_strictly_increasing(self):
+		shells = integer_shells(n_shells=6)
+		n2s = [shell[0][0]**2 + shell[0][1]**2 for shell in shells]
+		assert n2s == sorted(set(n2s))
+
+
+# ---------------------------------------------------------------------------
+# exciton_hamiltonian + plane-wave eigenequation
+# ---------------------------------------------------------------------------
+
+class TestExcitonHamiltonian:
+	def test_zero_potential_plane_wave_eigenstate(self, qcfg):
+		"""
+		With V=0 and periodic boundaries, plane waves are exact eigenvectors
+		of H with eigenvalue equal to lattice_kinetic_energy.
+		"""
+		V = np.zeros((qcfg.N, qcfg.N))
+		H = exciton_hamiltonian(qcfg, V)
+		nx, ny = 1, 0
+		phi = plane_wave(qcfg, nx, ny)
+		Hphi = H @ phi
+		eps = lattice_kinetic_energy(qcfg, nx, ny)
+		np.testing.assert_allclose(Hphi, eps * phi, atol=1e-10)
+
+
+# ---------------------------------------------------------------------------
+# green_for_realization
+# ---------------------------------------------------------------------------
+
+class TestGreenForRealization:
+	def test_zero_disorder_matches_bare_resolvent(self, qcfg):
+		"""
+		With V=0,  G(k, E) = 1 / (E + iε - ε_k)  exactly.
+		"""
+		V = np.zeros((qcfg.N, qcfg.N))
+		E = 5.0
+		shell = [(1, 0), (0, 1), (1, 1)]
+		G = green_for_realization(qcfg, V, E, shell)
+		expected = np.array([
+			1.0 / (E + 1j * qcfg.epsilon - lattice_kinetic_energy(qcfg, nx, ny))
+			for nx, ny in shell
+		])
+		np.testing.assert_allclose(G, expected, rtol=1e-8, atol=1e-10)
+
+	def test_output_length(self, qcfg):
+		V = gaussian_correlated_disorder(qcfg.N, qcfg.L, sigma=0.01, xi=0.1, seed=0)
+		G = green_for_realization(qcfg, V, E=1.0, shell_vectors=[(1, 0), (0, 1)])
+		assert G.shape == (2,)
+
+
+# ---------------------------------------------------------------------------
+# averaged_green_and_Q
+# ---------------------------------------------------------------------------
+
+class TestAveragedGreenAndQ:
+	def test_zero_disorder_Q_is_zero(self, qcfg):
+		"""With σ=0 the averaged G is the bare resolvent, so Q = 0 identically."""
+		shells = integer_shells(n_shells=4)
+		k_vals, G_avg, Q = averaged_green_and_Q(
+			qcfg, E=5.0, sigma=0.0, xi=0.1, shells=shells, n_realizations=2,
+		)
+		assert k_vals.shape == (4,)
+		assert G_avg.shape == (4,)
+		assert Q.shape == (4,)
+		np.testing.assert_allclose(Q, 0.0, atol=1e-8)
+
+	def test_nonzero_disorder_Q_imaginary_nonnegative(self, qcfg):
+		"""
+		With the retarded convention G = 1/(E + iε - H), disorder broadening
+		makes Im(1/G_avg) ≥ ε, so the extracted Im Q = Im(1/G_avg) - ε ≥ 0.
+		"""
+		shells = integer_shells(n_shells=3, include_zero=False)
+		_, _, Q = averaged_green_and_Q(
+			qcfg, E=5.0, sigma=0.5, xi=0.1, shells=shells,
+			n_realizations=4, seed0=0,
+		)
+		assert np.all(Q.imag >= -1e-10)
+
+
+# ---------------------------------------------------------------------------
+# sweep_disorder_self_energy
+# ---------------------------------------------------------------------------
+
+class TestSweepDisorderSelfEnergy:
+	def test_output_shapes(self, qcfg):
+		shells = integer_shells(n_shells=3)
+		sigmas = [0.0, 0.1, 0.2]
+		k_vals, sig_out, G_res, Q_res = sweep_disorder_self_energy(
+			qcfg, E=5.0, sigmas=sigmas, xi=0.1,
+			shells=shells, n_realizations=2,
+		)
+		assert k_vals.shape == (3,)
+		assert sig_out.shape == (3,)
+		assert G_res.shape == (3, 3)
+		assert Q_res.shape == (3, 3)
+
+	def test_first_row_zero_disorder_zero_Q(self, qcfg):
+		shells = integer_shells(n_shells=3)
+		_, _, _, Q_res = sweep_disorder_self_energy(
+			qcfg, E=5.0, sigmas=[0.0, 0.1], xi=0.1,
+			shells=shells, n_realizations=2,
+		)
+		np.testing.assert_allclose(Q_res[0], 0.0, atol=1e-8)
