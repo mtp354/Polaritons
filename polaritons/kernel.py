@@ -34,7 +34,8 @@ def make_propagator(p: Params, epsilon: float = 1e-9):
 	i_eps   = 1j * float(epsilon)
 
 	def F(q, Q, eta=1.0):
-		return -eta * q / (E_gap - E_bind - (hbar**2 * q**2) / (2.0 * M) + Q + i_eps)
+		# return -eta * q / (E_gap - E_bind - (hbar**2 * q**2) / (2.0 * M) + Q + i_eps)
+		return -eta * q / (0.1*E_gap - (hbar**2 * q**2) / (2.0 * M) + Q + i_eps)
 
 	return F
 
