@@ -20,15 +20,16 @@ from .parameters import Params
 
 def make_propagator(p: Params, epsilon: float = 1e-9):
 	"""
-	Return a vectorised propagator function F(q, Q, eta).
+	Return a vectorised propagator function ``F(q, Q, E_ext, eta)``.
 
-	F(q, Q, eta) = -eta*q / (E_gap - E_bind - hbar^2*q^2/(2M) + Q + i*epsilon)
+	    F(q, Q, E_ext, eta) = -eta * q
+	                          / (E_ext - hbar^2 q^2 / (2 M) + Q + i*epsilon)
 
-	`epsilon` is the imaginary regulator (in natural energy units) that
-	keeps the propagator finite at the resonance.
+	``E_ext`` is the external energy *measured relative to the exciton band
+	bottom* ``E_gap - E_bind`` (the constant offset is no longer baked into
+	the denominator). ``epsilon`` is the imaginary regulator (in natural
+	energy units) that keeps the propagator finite at the resonance.
 	"""
-	E_gap   = p.E_gap
-	E_bind  = p.E_bind
 	hbar    = p.hbar
 	M       = p.M
 	i_eps   = 1j * float(epsilon)

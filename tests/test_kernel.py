@@ -33,36 +33,37 @@ class TestMakePropagator:
 		"""F ∝ eta, so F(q, Q, eta=0) = 0."""
 		F = make_propagator(p_nat)
 		Q = np.zeros_like(small_q)
-		result = F(small_q, Q, eta=0.0)
+		result = F(small_q, Q, E_ext=0.0, eta=0.0)
 		np.testing.assert_allclose(np.abs(result), 0.0, atol=1e-30)
 
 	def test_scales_linearly_with_eta(self, p_nat, small_q):
 		"""F(q, Q, 2*eta) = 2 * F(q, Q, eta)."""
 		F = make_propagator(p_nat)
 		Q = np.zeros_like(small_q)
-		f1 = F(small_q, Q, eta=1.0)
-		f2 = F(small_q, Q, eta=2.0)
+		f1 = F(small_q, Q, E_ext=0.0, eta=1.0)
+		f2 = F(small_q, Q, E_ext=0.0, eta=2.0)
 		np.testing.assert_allclose(f2, 2.0 * f1, rtol=1e-10)
 
 	def test_output_shape(self, p_nat, small_q):
 		F = make_propagator(p_nat)
 		Q = np.zeros_like(small_q)
-		result = F(small_q, Q, eta=1.0)
+		result = F(small_q, Q, E_ext=0.0, eta=1.0)
 		assert result.shape == small_q.shape
 
 	def test_complex_output(self, p_nat, small_q):
 		"""F has a small imaginary regularizer, so result is complex."""
 		F = make_propagator(p_nat)
 		Q = np.zeros_like(small_q, dtype=complex)
-		result = F(small_q, Q, eta=1.0)
+		result = F(small_q, Q, E_ext=0.0, eta=1.0)
 		assert np.iscomplexobj(result)
 
 	def test_finite_at_resonance(self, p_nat, small_q):
 		"""The i*epsilon regulator prevents divergence at the resonance."""
 		F = make_propagator(p_nat)
-		# Q chosen so denominator is nearly zero for mid-grid q
-		Q = np.ones_like(small_q) * p_nat.E_gap
-		result = F(small_q, Q, eta=1.0)
+		# Choose Q so that the real part of the denominator is exactly zero
+		# at every q (E_ext = 0, so denom_re = -hbar^2 q^2/(2M) + Q.real).
+		Q = (p_nat.hbar**2 * small_q**2) / (2.0 * p_nat.M) + 0j
+		result = F(small_q, Q, E_ext=0.0, eta=1.0)
 		assert np.all(np.isfinite(result))
 
 
@@ -180,7 +181,10 @@ class TestPropagatorEpsilon:
 		F1 = make_propagator(p_nat)
 		F2 = make_propagator(p_nat, epsilon=1e-9)
 		Q  = np.zeros_like(small_q, dtype=complex)
-		np.testing.assert_array_equal(F1(small_q, Q, eta=1.0), F2(small_q, Q, eta=1.0))
+		np.testing.assert_array_equal(
+			F1(small_q, Q, E_ext=0.0, eta=1.0),
+			F2(small_q, Q, E_ext=0.0, eta=1.0),
+		)
 
 	def test_zero_epsilon_changes_result(self, p_nat, small_q):
 		# Imaginary part of F scales with epsilon when the denominator is real:
@@ -188,8 +192,8 @@ class TestPropagatorEpsilon:
 		Q  = np.zeros_like(small_q, dtype=complex)
 		F0 = make_propagator(p_nat, epsilon=1e-12)
 		F1 = make_propagator(p_nat, epsilon=1e-3)
-		im0 = np.abs(F0(small_q, Q, eta=1.0).imag).max()
-		im1 = np.abs(F1(small_q, Q, eta=1.0).imag).max()
+		im0 = np.abs(F0(small_q, Q, E_ext=0.0, eta=1.0).imag).max()
+		im1 = np.abs(F1(small_q, Q, E_ext=0.0, eta=1.0).imag).max()
 		assert im1 > 1e3 * im0
 
 

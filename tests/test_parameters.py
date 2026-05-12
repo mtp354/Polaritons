@@ -11,7 +11,7 @@ class TestParamsDefaults:
 	def test_construction_default(self):
 		p = Params()
 		assert p.E_bind == pytest.approx(4.2e-3)
-		assert p.E_gap_bare == pytest.approx(1.6)
+		assert p.E_gap_bare == pytest.approx(1.519)
 		assert not p.in_natural_units
 
 	def test_default_params_singleton(self):
@@ -23,7 +23,7 @@ class TestParamsDefaults:
 		assert p.E_bind == pytest.approx(5e-3)
 		assert p.T == pytest.approx(10.0)
 		# Other fields should keep defaults
-		assert p.E_gap_bare == pytest.approx(1.6)
+		assert p.E_gap_bare == pytest.approx(1.519)
 
 
 class TestDerivedProperties:

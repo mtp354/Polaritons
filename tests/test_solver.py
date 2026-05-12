@@ -10,12 +10,12 @@ from polaritons.solver import picard_iteration
 N = 10  # small grid size for fast tests
 
 
-def _zero_F(q, Q, *, eta):
+def _zero_F(q, Q):
 	"""Propagator that returns zero — simplest convergence case."""
 	return np.zeros_like(Q, dtype=complex)
 
 
-def _identity_F(q, Q, *, eta):
+def _identity_F(q, Q):
 	"""Returns Q unchanged — K @ F_vec = K @ (Q * weights)."""
 	return Q.astype(complex)
 
@@ -29,8 +29,7 @@ class TestPicardConvergence:
 		weights = np.ones(N) * 0.1
 
 		Q, delta = picard_iteration(
-			Q_init, q, K, weights, _identity_F,
-			eta=1.0, tol=1e-12, max_iter=200, verbose=False,
+			Q_init, q, K, weights, _identity_F, tol=1e-12, max_iter=200, verbose=False,
 		)
 		np.testing.assert_allclose(Q, 0.0, atol=1e-12)
 
@@ -42,8 +41,7 @@ class TestPicardConvergence:
 		weights = np.ones(N)
 
 		Q, delta = picard_iteration(
-			Q_init, q, K, weights, _zero_F,
-			eta=0.0, tol=1e-14, max_iter=10, verbose=False,
+			Q_init, q, K, weights, _zero_F, tol=1e-14, max_iter=10, verbose=False,
 		)
 		np.testing.assert_allclose(Q, 0.0, atol=1e-14)
 
@@ -55,8 +53,7 @@ class TestPicardConvergence:
 		weights = np.ones(N) * 0.1
 
 		Q, delta = picard_iteration(
-			Q_init, q, K, weights, _zero_F,
-			eta=1.0, tol=1e-14, max_iter=50, verbose=False,
+			Q_init, q, K, weights, _zero_F, tol=1e-14, max_iter=50, verbose=False,
 		)
 		np.testing.assert_allclose(Q, 0.0, atol=1e-14)
 
@@ -69,8 +66,7 @@ class TestPicardOutputShape:
 		weights = np.ones(N)
 
 		Q, delta = picard_iteration(
-			Q_init, q, K, weights, _zero_F,
-			eta=1.0, max_iter=20, verbose=False,
+			Q_init, q, K, weights, _zero_F, max_iter=20, verbose=False,
 		)
 		assert Q.shape == (N,)
 
@@ -82,8 +78,7 @@ class TestPicardOutputShape:
 		weights  = np.ones(N)
 
 		Q, delta = picard_iteration(
-			Q_init, q, K, weights, _zero_F,
-			eta=1.0, max_iter=max_iter, verbose=False,
+			Q_init, q, K, weights, _zero_F, max_iter=max_iter, verbose=False,
 		)
 		assert delta.shape == (max_iter,)
 
@@ -95,8 +90,7 @@ class TestPicardOutputShape:
 
 		Q_init_copy = Q_init.copy()
 		picard_iteration(
-			Q_init, q, K, weights, _zero_F,
-			eta=1.0, max_iter=10, verbose=False,
+			Q_init, q, K, weights, _zero_F, max_iter=10, verbose=False,
 		)
 		np.testing.assert_array_equal(Q_init, Q_init_copy)
 
@@ -110,8 +104,7 @@ class TestPicardRelaxation:
 		weights = np.ones(N)
 
 		Q, delta = picard_iteration(
-			Q_init, q, K, weights, _identity_F,
-			eta=1.0, tol=1e-10, max_iter=500, w=0.5, verbose=False,
+			Q_init, q, K, weights, _identity_F, tol=1e-10, max_iter=500, w=0.5, verbose=False,
 		)
 		np.testing.assert_allclose(Q, 0.0, atol=1e-9)
 
@@ -123,8 +116,7 @@ class TestPicardRelaxation:
 		weights = np.ones(N)
 
 		Q, _ = picard_iteration(
-			Q_init, q, K, weights, _identity_F,
-			eta=1.0, tol=1e-14, max_iter=100, w=0.0, verbose=False,
+			Q_init, q, K, weights, _identity_F, tol=1e-14, max_iter=100, w=0.0, verbose=False,
 		)
 		np.testing.assert_array_almost_equal(Q, Q_init)
 
@@ -139,7 +131,6 @@ class TestPicardDelta:
 		max_iter = 30
 
 		Q, delta = picard_iteration(
-			Q_init, q, K, weights, _zero_F,
-			eta=1.0, tol=1e-20, max_iter=max_iter, verbose=False,
+			Q_init, q, K, weights, _zero_F, tol=1e-20, max_iter=max_iter, verbose=False,
 		)
 		np.testing.assert_allclose(delta, 0.0, atol=1e-20)
