@@ -58,11 +58,21 @@ class DispersionModel:
 		if self.q_grid_nat.ndim != 1 or np.any(np.diff(self.q_grid_nat) <= 0.0):
 			raise ValueError("q_grid_nat must be a strictly increasing 1-D array.")
 
-		# Build one k-only spline for each solved eta value.
-		self._Q_splines = [
-			CubicSpline(self.q_grid_nat, Q_results[i], extrapolate=True)
-			for i in range(len(self.eta_grid))
-		]
+		# Build one k-only spline for each solved eta value.  NaN samples
+		# (k-points where the on-shell root could not be located) are
+		# dropped before fitting; extrapolation covers the gaps.
+		self._Q_splines = []
+		for i in range(len(self.eta_grid)):
+			row    = Q_results[i]
+			finite = np.isfinite(row.real) & np.isfinite(row.imag)
+			if finite.sum() < 2:
+				raise ValueError(
+					f"Q_results[{i}] (eta={self.eta_grid[i]}) has fewer than two finite samples; "
+					"cannot build a spline."
+				)
+			self._Q_splines.append(
+				CubicSpline(self.q_grid_nat[finite], row[finite], extrapolate=True)
+			)
 
 	def _eta_index(self, eta: float) -> int:
 		"""Index of an already-solved eta value."""
