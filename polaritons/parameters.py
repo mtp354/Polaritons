@@ -23,11 +23,10 @@ _C_SI        = 3e8          # speed of light            m/s
 _HBAR_SI     = 6.58e-16     # reduced Planck constant   eV·s
 _KB_SI       = 8.617333262e-5  # Boltzmann constant     eV/K
 
-# Masses from PhysRevB.44 (eV·s²/m²)
+# Masses and band from Vurgaftman et al 2001 (eV·s²/m²)
 _M_REST_SI   = 5.68e-12
-_M_E_SI      = 3.81e-13     # electron effective mass
-_M_H_SI      = 2.56e-12     # hole effective mass
-_M_EFF_SI    = 7.8e-5 * _M_REST_SI  # effective polariton mass (PRB 77 155317)
+_M_E_SI      = 0.065 * _M_REST_SI		# electron effective mass
+_M_H_SI      = 0.165 * _M_REST_SI		# hole effective mass
 
 
 @dataclass
@@ -53,7 +52,6 @@ class Params:
 	m_prime         : band-structure constant (dimensionless)
 	n_refr          : refractive index of the cavity medium
 	N_qw            : number of quantum wells
-	M_eff           : effective polariton mass used by real-space routines
 
 	Disorder
 	~~~~~~~~
@@ -74,7 +72,7 @@ class Params:
 
 	# ---- material ----------------------------------------------------------
 	E_bind      : float = 4.2e-3           # eV
-	E_gap_bare  : float = 1.6              # eV  (E_gap = E_gap_bare + E_bind)
+	E_gap_bare  : float = 1.519            # eV  
 	m_e         : float = _M_E_SI
 	m_h         : float = _M_H_SI
 	m_rest      : float = _M_REST_SI
@@ -103,7 +101,6 @@ class Params:
 	c     : float = field(default=_C_SI,    repr=False)
 	hbar  : float = field(default=_HBAR_SI, repr=False)
 	k_B   : float = field(default=_KB_SI,   repr=False)
-	M_eff : float = field(default=_M_EFF_SI,repr=False)
 
 	# ------------------------------------------------------------------
 	# Derived quantities
@@ -186,7 +183,6 @@ class Params:
 			c     = self.c    / L_u,          # now in natural length/time
 			hbar  = self.hbar / E_u,
 			k_B   = self.k_B  / E_u,
-			M_eff = self.M_eff * L_u**2 / E_u,
 		)
 		return p
 

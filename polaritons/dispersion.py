@@ -145,12 +145,14 @@ class DispersionModel:
 			if disorder_tuned
 			else np.asarray(self.E_ph_untuned(k), dtype=complex)
 		)
-		Omega = self.p.Omega
+		# Params.Omega is the Rabi splitting (LP-UP gap at resonance), so the
+		# off-diagonal coupling in the 2x2 exciton-photon block is Omega/2.
+		g = 0.5 * self.p.Omega
 
-		# Closed-form lower root of the 2x2 [[Eex, Omega],[Omega, Eph]] block.
-		# E_+/- = (Eex + Eph)/2 +/- sqrt(((Eex - Eph)/2)^2 + Omega^2)
+		# Closed-form lower root of the 2x2 [[Eex, g],[g, Eph]] block.
+		# E_+/- = (Eex + Eph)/2 +/- sqrt(((Eex - Eph)/2)^2 + g^2)
 		# Lower polariton is the minus branch (continuous in k by construction).
 		half_sum  = 0.5 * (Eex + Eph)
 		half_diff = 0.5 * (Eex - Eph)
-		disc      = np.sqrt(half_diff * half_diff + Omega * Omega)
+		disc      = np.sqrt(half_diff * half_diff + g * g)
 		return half_sum - disc

@@ -15,6 +15,16 @@ def params_si():
 
 
 @pytest.fixture(scope="session")
+def M_lp_si(params_si):
+	"""A representative LP effective mass in SI units (eV*s^2/m^2).
+
+	Used by real-space tests that need *some* mass to build a Hamiltonian;
+	the value (7.8e-5 * m_rest, PRB 77 155317) is illustrative only.
+	"""
+	return 7.8e-5 * params_si.m_rest
+
+
+@pytest.fixture(scope="session")
 def params_nat(params_si):
 	"""Default Params converted to natural units (E_bind=1, a=1)."""
 	return params_si.to_natural()

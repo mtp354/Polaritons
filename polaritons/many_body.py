@@ -148,7 +148,8 @@ def hopfield_coefficients(
 	C_LP : photon fraction  (complex array)
 	"""
 	E_ex_vals = model.E_ex(k_grid, eta)
-	ratio     = (E_lp_vals - E_ex_vals) / model.p.Omega
+	# Off-diagonal coupling in the 2x2 block is Omega/2 (Omega = Rabi splitting).
+	ratio     = (E_lp_vals - E_ex_vals) / (0.5 * model.p.Omega)
 	X_LP = 1.0 / np.sqrt(1.0 + np.abs(ratio)**2)
 	C_LP = ratio / np.sqrt(1.0 + np.abs(ratio)**2)
 	return X_LP, C_LP

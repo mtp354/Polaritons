@@ -129,22 +129,22 @@ class TestLaplacian2d:
 # ---------------------------------------------------------------------------
 
 class TestLpHamiltonian:
-	def test_shape(self, flat_disorder, p_si):
-		H = lp_hamiltonian(N_SMALL, L_SMALL, M_lp=p_si.M_eff, V=flat_disorder, hbar=p_si.hbar)
+	def test_shape(self, flat_disorder, p_si, M_lp_si):
+		H = lp_hamiltonian(N_SMALL, L_SMALL, M_lp=M_lp_si, V=flat_disorder, hbar=p_si.hbar)
 		assert H.shape == (N_SMALL**2, N_SMALL**2)
 
-	def test_symmetric_for_real_potential(self, flat_disorder, p_si):
-		H = lp_hamiltonian(N_SMALL, L_SMALL, M_lp=p_si.M_eff, V=flat_disorder, hbar=p_si.hbar)
+	def test_symmetric_for_real_potential(self, flat_disorder, p_si, M_lp_si):
+		H = lp_hamiltonian(N_SMALL, L_SMALL, M_lp=M_lp_si, V=flat_disorder, hbar=p_si.hbar)
 		diff = (H - H.T).toarray()
 		np.testing.assert_allclose(diff, 0.0, atol=1e-10)
 
-	def test_constant_potential_shifts_energies(self, p_si):
+	def test_constant_potential_shifts_energies(self, p_si, M_lp_si):
 		"""Adding a constant V to the potential shifts all eigenvalues by that amount."""
 		V_flat = np.zeros((N_SMALL, N_SMALL))
 		V_shift = np.ones((N_SMALL, N_SMALL)) * 0.5
 
-		H0 = lp_hamiltonian(N_SMALL, L_SMALL, p_si.M_eff, V_flat,  p_si.hbar)
-		H1 = lp_hamiltonian(N_SMALL, L_SMALL, p_si.M_eff, V_shift, p_si.hbar)
+		H0 = lp_hamiltonian(N_SMALL, L_SMALL, M_lp_si, V_flat,  p_si.hbar)
+		H1 = lp_hamiltonian(N_SMALL, L_SMALL, M_lp_si, V_shift, p_si.hbar)
 
 		vals0, _ = solve_low_modes(H0, n_modes=3)
 		vals1, _ = solve_low_modes(H1, n_modes=3)
@@ -156,25 +156,25 @@ class TestLpHamiltonian:
 # ---------------------------------------------------------------------------
 
 class TestSolveLowModes:
-	def test_eigenvalues_sorted(self, flat_disorder, p_si):
-		H    = lp_hamiltonian(N_SMALL, L_SMALL, p_si.M_eff, flat_disorder, p_si.hbar)
+	def test_eigenvalues_sorted(self, flat_disorder, p_si, M_lp_si):
+		H    = lp_hamiltonian(N_SMALL, L_SMALL, M_lp_si, flat_disorder, p_si.hbar)
 		vals, _ = solve_low_modes(H, n_modes=4)
 		assert np.all(np.diff(vals) >= 0)
 
-	def test_eigenvector_shape(self, flat_disorder, p_si):
-		H    = lp_hamiltonian(N_SMALL, L_SMALL, p_si.M_eff, flat_disorder, p_si.hbar)
+	def test_eigenvector_shape(self, flat_disorder, p_si, M_lp_si):
+		H    = lp_hamiltonian(N_SMALL, L_SMALL, M_lp_si, flat_disorder, p_si.hbar)
 		_, vecs = solve_low_modes(H, n_modes=3)
 		assert vecs.shape == (N_SMALL**2, 3)
 
-	def test_eigenvalues_real(self, flat_disorder, p_si):
+	def test_eigenvalues_real(self, flat_disorder, p_si, M_lp_si):
 		"""Symmetric Hamiltonian must have real eigenvalues."""
-		H    = lp_hamiltonian(N_SMALL, L_SMALL, p_si.M_eff, flat_disorder, p_si.hbar)
+		H    = lp_hamiltonian(N_SMALL, L_SMALL, M_lp_si, flat_disorder, p_si.hbar)
 		vals, _ = solve_low_modes(H, n_modes=3)
 		np.testing.assert_allclose(vals.imag, 0.0, atol=1e-10)
 
-	def test_eigenvectors_orthonormal(self, flat_disorder, p_si):
+	def test_eigenvectors_orthonormal(self, flat_disorder, p_si, M_lp_si):
 		"""Eigenvectors returned by eigsh should be orthonormal."""
-		H    = lp_hamiltonian(N_SMALL, L_SMALL, p_si.M_eff, flat_disorder, p_si.hbar)
+		H    = lp_hamiltonian(N_SMALL, L_SMALL, M_lp_si, flat_disorder, p_si.hbar)
 		_, vecs = solve_low_modes(H, n_modes=4)
 		gram = vecs.T @ vecs
 		np.testing.assert_allclose(gram, np.eye(4), atol=1e-10)
@@ -301,10 +301,10 @@ class TestCorrelationLength:
 # ---------------------------------------------------------------------------
 
 class TestGEffLowestMode:
-	def test_returns_positive_float(self, p_si):
+	def test_returns_positive_float(self, p_si, M_lp_si):
 		result = g_eff_lowest_mode(
 			N=N_SMALL, L=L_SMALL,
-			M_lp=p_si.M_eff,
+			M_lp=M_lp_si,
 			sigma=0.01, xi=0.1,
 			hbar=p_si.hbar,
 			g_lp=1.0,
@@ -313,27 +313,27 @@ class TestGEffLowestMode:
 		assert isinstance(result, float)
 		assert result > 0
 
-	def test_reproducible_with_seed(self, p_si):
-		kw = dict(N=N_SMALL, L=L_SMALL, M_lp=p_si.M_eff,
+	def test_reproducible_with_seed(self, p_si, M_lp_si):
+		kw = dict(N=N_SMALL, L=L_SMALL, M_lp=M_lp_si,
 				  sigma=0.01, xi=0.1, hbar=p_si.hbar, g_lp=1.0)
 		r1 = g_eff_lowest_mode(**kw, seed=42)
 		r2 = g_eff_lowest_mode(**kw, seed=42)
 		assert r1 == pytest.approx(r2)
 
-	def test_scales_with_g_lp(self, p_si):
+	def test_scales_with_g_lp(self, p_si, M_lp_si):
 		"""g_eff ∝ g_lp (IPR factor is the same)."""
-		kw = dict(N=N_SMALL, L=L_SMALL, M_lp=p_si.M_eff,
+		kw = dict(N=N_SMALL, L=L_SMALL, M_lp=M_lp_si,
 				  sigma=0.01, xi=0.1, hbar=p_si.hbar, seed=7)
 		r1 = g_eff_lowest_mode(**kw, g_lp=1.0)
 		r2 = g_eff_lowest_mode(**kw, g_lp=2.0)
 		assert r2 == pytest.approx(2.0 * r1, rel=1e-10)
 
-	def test_larger_sigma_increases_ipr(self, p_si):
+	def test_larger_sigma_increases_ipr(self, p_si, M_lp_si):
 		"""
 		Stronger disorder concentrates the ground mode, increasing IPR
 		and therefore g_eff.  Test with large σ vs near-zero σ.
 		"""
-		kw = dict(N=N_SMALL, L=L_SMALL, M_lp=p_si.M_eff,
+		kw = dict(N=N_SMALL, L=L_SMALL, M_lp=M_lp_si,
 				  xi=0.1, hbar=p_si.hbar, g_lp=1.0, seed=3)
 		g_weak   = g_eff_lowest_mode(**kw, sigma=1e-6)
 		g_strong = g_eff_lowest_mode(**kw, sigma=1.0)

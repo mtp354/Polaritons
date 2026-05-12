@@ -133,12 +133,14 @@ class TestELP:
 
 	def test_rabi_splitting_at_k0(self, simple_model, params_nat, eta_grid):
 		"""
-		At resonance, E_LP(0) = E_0 - Omega (2×2 eigenproblem result).
+		At resonance the LP-UP gap equals the Rabi splitting Omega, so the
+		off-diagonal coupling in the 2x2 block is Omega/2 and
+		E_LP(0) = E_0 - Omega/2.
 		"""
 		for eta in eta_grid:
 			E_0  = _e0(simple_model, eta)
 			E_lp = float(np.real(simple_model.E_LP(np.array([0.0]), eta)[0]))
-			assert E_lp == pytest.approx(E_0 - params_nat.Omega, rel=1e-5)
+			assert E_lp == pytest.approx(E_0 - 0.5 * params_nat.Omega, rel=1e-5)
 
 	def test_disorder_tuned_vs_untuned_differ(self, params_nat, q_grid_nat, eta_grid):
 		"""
@@ -196,7 +198,7 @@ class TestDispersionModelConstruction:
 class TestELPAnalyticAgreesWithEigvals:
 	"""
 	Regression test: closed-form LP root must match np.linalg.eigvals on the
-	2x2 [[Eex, Omega],[Omega, Eph]] block element-wise.
+	2x2 [[Eex, Omega/2],[Omega/2, Eph]] block element-wise.
 	"""
 
 	def test_matches_eigvals_real_Q(self, params_nat, q_grid_nat, eta_grid):
@@ -209,11 +211,11 @@ class TestELPAnalyticAgreesWithEigvals:
 		for eta in eta_grid:
 			Eex = np.asarray(model.E_ex(k_arr, eta), dtype=complex)
 			Eph = np.asarray(model.E_ph(k_arr, eta), dtype=complex)
-			Omega = model.p.Omega
+			g = 0.5 * model.p.Omega
 			expected = np.empty_like(Eex)
 			for i in range(len(k_arr)):
 				vals = np.linalg.eigvals(
-					np.array([[Eex[i], Omega], [Omega, Eph[i]]], dtype=complex)
+					np.array([[Eex[i], g], [g, Eph[i]]], dtype=complex)
 				)
 				expected[i] = vals[np.argmin(vals.real)]
 			got = model.E_LP(k_arr, eta)
@@ -230,11 +232,11 @@ class TestELPAnalyticAgreesWithEigvals:
 		for eta in eta_grid:
 			Eex = np.asarray(model.E_ex(k_arr, eta), dtype=complex)
 			Eph = np.asarray(model.E_ph(k_arr, eta), dtype=complex)
-			Omega = model.p.Omega
+			g = 0.5 * model.p.Omega
 			# Compare against the closed-form root with the principal sqrt.
 			half_sum  = 0.5 * (Eex + Eph)
 			half_diff = 0.5 * (Eex - Eph)
-			disc      = np.sqrt(half_diff**2 + Omega**2)
+			disc      = np.sqrt(half_diff**2 + g**2)
 			expected  = half_sum - disc
 			got = model.E_LP(k_arr, eta)
 			np.testing.assert_allclose(got, expected, rtol=1e-12, atol=1e-12)
