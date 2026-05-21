@@ -126,21 +126,29 @@ class DispersionModel:
 
 	def E_ph(self, k_nat: float | np.ndarray, eta: float) -> np.ndarray:
 		"""
-		Photon dispersion  E_ph = sqrt((hbar*c*k/n)^2 + E_0^2)
+		Photon dispersion in the band-bottom-relative convention:
 
-		Cavity is tuned so E_ph(0) = Re[E_ex(0, eta)].
+		    E_ph(k) = sqrt((hbar*c*k/n)^2 + E_0_abs^2) - E_band_bottom,
+
+		where E_0_abs = E_band_bottom + Re[E_ex(0, eta)] is the absolute
+		cavity energy at k=0 and E_band_bottom = E_gap - E_bind is the
+		semiconductor offset.  This preserves the tuning condition
+		E_ph(0) = Re[E_ex(0, eta)] in the band-bottom-relative convention.
 		"""
-		p   = self.p
-		k   = np.asarray(k_nat, dtype=float)
-		E_0 = float(np.real(self.E_ex(0.0, eta)))
-		return np.sqrt((p.hbar * p.c * k / p.n_refr)**2 + E_0**2)
+		p             = self.p
+		k             = np.asarray(k_nat, dtype=float)
+		E_band_bottom = float(p.E_gap - p.E_bind)
+		E_0_abs       = E_band_bottom + float(np.real(self.E_ex(0.0, eta)))
+		return np.sqrt((p.hbar * p.c * k / p.n_refr)**2 + E_0_abs**2) - E_band_bottom
 
 	def E_ph_untuned(self, k_nat: float | np.ndarray) -> np.ndarray:
-		"""Photon dispersion tuned to the disorder-free (eta=0) exciton energy."""
-		p   = self.p
-		k   = np.asarray(k_nat, dtype=float)
-		E_0 = float(np.real(self.E_ex(0.0, 0.0)))
-		return np.sqrt((p.hbar * p.c * k / p.n_refr)**2 + E_0**2)
+		"""Photon dispersion tuned to the disorder-free (eta=0) exciton energy
+		(band-bottom-relative; see E_ph for the convention)."""
+		p             = self.p
+		k             = np.asarray(k_nat, dtype=float)
+		E_band_bottom = float(p.E_gap - p.E_bind)
+		E_0_abs       = E_band_bottom + float(np.real(self.E_ex(0.0, 0.0)))
+		return np.sqrt((p.hbar * p.c * k / p.n_refr)**2 + E_0_abs**2) - E_band_bottom
 
 	def E_LP(
 		self,
