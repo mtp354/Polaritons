@@ -191,3 +191,72 @@ def make_kernel(p: Params, kind: str = "gaussian", n_gauss: int = 96):
 			f"Unknown kernel kind: {kind!r}. Expected one of {list(_KERNEL_FACTORIES)}."
 		)
 	return factory(p, n_gauss=n_gauss)
+
+
+def find_kernel_truncation(
+	K_fn,
+	*,
+	threshold: float,
+	k_lower: float,
+	n_probe: int = 4096,
+	k_start: float | None = None,
+	max_expansions: int = 12,
+) -> float:
+	"""
+	Find the truncation momentum ``t`` for a kernel ``K_fn``.
+
+	``t`` is the smallest k > 0 satisfying ``K(0, k) <= threshold * K(0, 0)``,
+	clamped from below by ``k_lower``. The search bound starts at
+	``max(k_start, 2 * k_lower)`` and doubles up to ``max_expansions`` times
+	until the threshold is crossed.
+
+	Parameters
+	----------
+	K_fn       : callable ``K(q, k) -> array`` (vectorised in q and k).
+	threshold  : relative threshold (e.g. 1e-3).
+	k_lower    : lower bound on the returned truncation (natural units).
+	n_probe    : number of probe points on the linear grid [0, k_search_max].
+	k_start    : initial upper bound for the search (natural units). Defaults
+	             to ``20 * k_lower``.
+	max_expansions : number of times to double ``k_search_max`` if the
+	                 threshold has not been crossed.
+
+	Returns
+	-------
+	t : float, the truncation momentum in natural units.
+	"""
+	if threshold <= 0.0 or threshold >= 1.0:
+		raise ValueError(f"threshold must be in (0, 1); got {threshold}")
+	if k_lower <= 0.0:
+		raise ValueError(f"k_lower must be positive; got {k_lower}")
+
+	K00 = float(K_fn(np.array([0.0]), np.array([0.0]))[0, 0])
+	if not np.isfinite(K00) or K00 <= 0.0:
+		raise ValueError(f"K(0, 0) must be finite and positive; got {K00}")
+	target = threshold * K00
+
+	k_search_max = float(k_start) if k_start is not None else 20.0 * k_lower
+	k_search_max = max(k_search_max, 2.0 * k_lower)
+
+	for _ in range(max_expansions + 1):
+		k_probe = np.linspace(0.0, k_search_max, int(n_probe))
+		K_row = K_fn(np.array([0.0]), k_probe)[0]
+		below = np.flatnonzero(K_row <= target)
+		if below.size:
+			j = int(below[0])
+			if j == 0:
+				t = float(k_probe[1])
+			else:
+				k0, k1 = k_probe[j - 1], k_probe[j]
+				K0, K1 = K_row[j - 1], K_row[j]
+				if K0 == K1:
+					t = float(k1)
+				else:
+					t = float(k0 + (target - K0) * (k1 - k0) / (K1 - K0))
+			return max(t, float(k_lower))
+		k_search_max *= 2.0
+
+	raise RuntimeError(
+		f"Kernel did not fall below {threshold}*K(0,0) within k <= {k_search_max:g}; "
+		"increase max_expansions or k_start."
+	)
