@@ -24,6 +24,7 @@ from functools import partial
 from typing import Callable
 
 import numpy as np
+from scipy.optimize import brentq
 
 from .parameters import Params
 from .solver import picard_iteration
@@ -133,17 +134,23 @@ def find_E_k_prime(
 	On-shell external energy E_k'(eta, k) where the real part of the
 	denominator vanishes:
 
-	    f(E_ext) = Re[ E_ext - hbar^2 k^2 / (2 M) - Sigma(k, E_ext) ] = 0
+	    f(E_ext) = E_ext - hbar^2 k^2 / (2 M) - Re[Sigma(k, E_ext)] = 0
 
-	The first sign change along the E_ext axis is bracketed and a linear
-	interpolation gives E_k'. If no sign change occurs anywhere on the
-	grid, the entry is set to NaN.
+	The first sign change of ``f`` along the E_ext grid is bracketed and
+	then refined with ``scipy.optimize.brentq`` on a linear interpolation
+	of ``Sigma.real`` between the bracketing grid points. If no sign
+	change occurs anywhere on the grid, the entry is set to NaN.
+
+	The bare-band reference is ``hbar^2 k^2 / (2 M)``, i.e. the clean
+	exciton dispersion measured from the band bottom (no semiconductor
+	offset). This matches the band-bottom-relative convention used
+	elsewhere in the library.
 
 	Parameters
 	----------
 	Sigma_arr  : (n_eta, n_E, N) complex array from ``sweep_sigma``
 	q          : momentum grid, length N
-	E_ext_grid : external energy grid, length n_E
+	E_ext_grid : external energy grid, length n_E (strictly increasing)
 	p          : natural-unit Params (uses p.hbar, p.M)
 
 	Returns
@@ -156,36 +163,54 @@ def find_E_k_prime(
 	if len(q) != N:
 		raise ValueError("q length must equal Sigma_arr.shape[2]")
 
+	E = np.asarray(E_ext_grid, dtype=float)
+	if not np.all(np.diff(E) > 0):
+		raise ValueError("E_ext_grid must be strictly increasing")
+
 	bare = (p.hbar**2 * np.asarray(q, dtype=float)**2) / (2.0 * p.M)   # (N,)
-	E    = np.asarray(E_ext_grid, dtype=float)                         # (n_E,)
 
 	out = np.full((n_eta, N), np.nan, dtype=float)
 
 	for ei in range(n_eta):
+		Sig_re_all = Sigma_arr[ei].real   # (n_E, N)
 		# f[j, k] = E[j] - bare[k] - Re[Sigma[ei, j, k]]
-		f = E[:, None] - bare[None, :] - Sigma_arr[ei].real
-		# Look for first sign change along axis 0 (E_ext).
-		signs = np.sign(f)
-		# Treat exact zero as positive so a sign change captures it on
-		# the next step; use diff to find indices.
-		s = np.where(signs == 0.0, 1.0, signs)
-		change = (s[:-1] * s[1:]) < 0.0           # (n_E - 1, N)
-		first  = np.argmax(change, axis=0)        # first True index per k
-		has    = change.any(axis=0)               # any sign change per k
+		f = E[:, None] - bare[None, :] - Sig_re_all
+		# Treat exact zero as positive so a sign change captures it later.
+		s      = np.where(np.sign(f) == 0.0, 1.0, np.sign(f))
+		change = (s[:-1] * s[1:]) < 0.0   # (n_E - 1, N)
+		first  = np.argmax(change, axis=0)
+		has    = change.any(axis=0)
 
-		# Linear interpolation between j and j+1 where f changes sign.
-		j   = first
-		k_idx = np.arange(N)
-		f0 = f[j,     k_idx]
-		f1 = f[j + 1, k_idx]
-		E0 = E[j]
-		E1 = E[j + 1]
-		denom = (f1 - f0)
-		# Guard against degenerate flat segments.
-		safe = np.where(denom != 0.0, denom, 1.0)
-		root = E0 - f0 * (E1 - E0) / safe
+		for k_idx in range(N):
+			if not has[k_idx]:
+				continue
+			j = int(first[k_idx])
+			E0, E1 = float(E[j]), float(E[j + 1])
+			s0 = float(Sig_re_all[j,     k_idx])
+			s1 = float(Sig_re_all[j + 1, k_idx])
+			b  = float(bare[k_idx])
 
-		out[ei] = np.where(has, root, np.nan)
+			def _f(E_val, _s0=s0, _s1=s1, _E0=E0, _E1=E1, _b=b):
+				# Linear interpolation of Re[Sigma] between (E0, s0) and (E1, s1).
+				t = (E_val - _E0) / (_E1 - _E0)
+				sig = _s0 + t * (_s1 - _s0)
+				return E_val - _b - sig
+
+			f0, f1 = _f(E0), _f(E1)
+			if f0 == 0.0:
+				out[ei, k_idx] = E0
+				continue
+			if f1 == 0.0:
+				out[ei, k_idx] = E1
+				continue
+			if f0 * f1 > 0.0:
+				# Numerical edge: bracket lost after substitution; skip.
+				continue
+			try:
+				root = brentq(_f, E0, E1, xtol=1e-14, rtol=1e-12, maxiter=100)
+			except (ValueError, RuntimeError):
+				continue
+			out[ei, k_idx] = float(root)
 
 	return out
 

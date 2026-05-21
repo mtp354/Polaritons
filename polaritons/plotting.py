@@ -200,6 +200,28 @@ def q_energy_values(Q_nat, p_nat, *, threshold_eV: float = 0.1):
 
 
 # ---------------------------------------------------------------------------
+# Energy convention: library quantities are band-bottom relative (clean
+# exciton minimum = 0). Plotting code adds the semiconductor offset
+# (E_gap - E_bind) to recover absolute energies.
+# ---------------------------------------------------------------------------
+
+def semiconductor_offset_natural(p_nat) -> float:
+	"""Semiconductor offset E_gap - E_bind in natural energy units."""
+	return float(p_nat.E_gap - p_nat.E_bind)
+
+
+def semiconductor_offset_eV(p_nat) -> float:
+	"""Semiconductor offset E_gap - E_bind in eV (uses p_nat.E_unit)."""
+	return float((p_nat.E_gap - p_nat.E_bind) * p_nat.E_unit)
+
+
+def to_absolute_eV(E_nat, p_nat):
+	"""Convert a band-bottom-relative natural energy to absolute eV."""
+	from .units import energy_nat_to_eV
+	return energy_nat_to_eV(E_nat, p_nat) + semiconductor_offset_eV(p_nat)
+
+
+# ---------------------------------------------------------------------------
 # Matplotlib tick / axis helpers (matplotlib imported lazily)
 # ---------------------------------------------------------------------------
 

@@ -110,10 +110,18 @@ class DispersionModel:
 	# ------------------------------------------------------------------
 
 	def E_ex(self, k_nat: float | np.ndarray, eta: float) -> np.ndarray:
-		"""Complex exciton dispersion in natural energy units."""
+		"""
+		Complex exciton dispersion in natural energy units, measured *relative
+		to the band bottom* (E_ex(0, η=0) = 0).
+
+		The absolute semiconductor offset ``E_gap - E_bind`` is intentionally
+		excluded; add it back in plotting code via
+		``polaritons.plotting.semiconductor_offset_natural`` when an absolute
+		energy axis is required.
+		"""
 		p  = self.p
 		k  = np.asarray(k_nat, dtype=float)
-		Ek = p.E_gap - p.E_bind + (p.hbar**2 * k**2) / (2.0 * p.M) - self.Q(k, eta)
+		Ek = (p.hbar**2 * k**2) / (2.0 * p.M) - self.Q(k, eta)
 		return Ek
 
 	def E_ph(self, k_nat: float | np.ndarray, eta: float) -> np.ndarray:

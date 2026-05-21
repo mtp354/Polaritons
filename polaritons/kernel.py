@@ -193,6 +193,18 @@ def make_kernel(p: Params, kind: str = "gaussian", n_gauss: int = 96):
 	return factory(p, n_gauss=n_gauss)
 
 
+def _kernel_diagonal(K_fn, t_probe: np.ndarray) -> np.ndarray:
+	"""Evaluate K(t, t) along ``t_probe`` without forming the full mesh."""
+	t_probe = np.asarray(t_probe, dtype=float)
+	out = np.empty(t_probe.shape, dtype=float)
+	# Most kernel factories accept paired arrays of shape (N, M); evaluate one
+	# probe point at a time to keep memory bounded and to avoid relying on
+	# diagonal-extraction conventions.
+	for i, t in enumerate(t_probe):
+		out[i] = float(K_fn(np.array([t]), np.array([t]))[0, 0])
+	return out
+
+
 def find_kernel_truncation(
 	K_fn,
 	*,
@@ -205,10 +217,12 @@ def find_kernel_truncation(
 	"""
 	Find the truncation momentum ``t`` for a kernel ``K_fn``.
 
-	``t`` is the smallest k > 0 satisfying ``K(0, k) <= threshold * K(0, 0)``,
-	clamped from below by ``k_lower``. The search bound starts at
-	``max(k_start, 2 * k_lower)`` and doubles up to ``max_expansions`` times
-	until the threshold is crossed.
+	``t`` is the smallest k > 0 satisfying
+	``|K(t, t)| <= threshold * |K(0, 0)|`` (i.e. the kernel diagonal falls
+	below a fraction of its zero-momentum value), clamped from below by
+	``k_lower``. The search bound starts at ``max(k_start, 2 * k_lower)``
+	and doubles up to ``max_expansions`` times until the threshold is
+	crossed.
 
 	Parameters
 	----------
@@ -231,24 +245,24 @@ def find_kernel_truncation(
 		raise ValueError(f"k_lower must be positive; got {k_lower}")
 
 	K00 = float(K_fn(np.array([0.0]), np.array([0.0]))[0, 0])
-	if not np.isfinite(K00) or K00 <= 0.0:
-		raise ValueError(f"K(0, 0) must be finite and positive; got {K00}")
-	target = threshold * K00
+	if not np.isfinite(K00) or K00 == 0.0:
+		raise ValueError(f"K(0, 0) must be finite and non-zero; got {K00}")
+	target = threshold * abs(K00)
 
 	k_search_max = float(k_start) if k_start is not None else 20.0 * k_lower
 	k_search_max = max(k_search_max, 2.0 * k_lower)
 
 	for _ in range(max_expansions + 1):
-		k_probe = np.linspace(0.0, k_search_max, int(n_probe))
-		K_row = K_fn(np.array([0.0]), k_probe)[0]
-		below = np.flatnonzero(K_row <= target)
+		t_probe = np.linspace(0.0, k_search_max, int(n_probe))
+		K_diag  = np.abs(_kernel_diagonal(K_fn, t_probe))
+		below   = np.flatnonzero(K_diag <= target)
 		if below.size:
 			j = int(below[0])
 			if j == 0:
-				t = float(k_probe[1])
+				t = float(t_probe[1])
 			else:
-				k0, k1 = k_probe[j - 1], k_probe[j]
-				K0, K1 = K_row[j - 1], K_row[j]
+				k0, k1 = t_probe[j - 1], t_probe[j]
+				K0, K1 = K_diag[j - 1], K_diag[j]
 				if K0 == K1:
 					t = float(k1)
 				else:
@@ -257,6 +271,6 @@ def find_kernel_truncation(
 		k_search_max *= 2.0
 
 	raise RuntimeError(
-		f"Kernel did not fall below {threshold}*K(0,0) within k <= {k_search_max:g}; "
+		f"|K(t,t)| did not fall below {threshold}*|K(0,0)| within t <= {k_search_max:g}; "
 		"increase max_expansions or k_start."
 	)

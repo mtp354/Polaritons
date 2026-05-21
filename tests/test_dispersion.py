@@ -79,11 +79,10 @@ class TestQInterpolation:
 
 class TestEEx:
 	def test_bare_exciton_at_k0(self, simple_model, params_nat, eta_grid):
-		"""With Q=0, E_ex(0, eta) = E_gap - E_bind (bare exciton energy)."""
-		expected = params_nat.E_gap - params_nat.E_bind
+		"""With Q=0 and the band-bottom convention, E_ex(0, eta) = 0."""
 		for eta in eta_grid:
 			val = float(np.real(simple_model.E_ex(0.0, eta)))
-			assert val == pytest.approx(expected, rel=1e-6)
+			assert val == pytest.approx(0.0, abs=1e-12)
 
 	def test_kinetic_energy_increases_with_k(self, simple_model):
 		"""E_ex(k) should be larger for larger k."""
