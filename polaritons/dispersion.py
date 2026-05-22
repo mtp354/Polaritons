@@ -175,10 +175,19 @@ class DispersionModel:
 		# off-diagonal coupling in the 2x2 exciton-photon block is Omega/2.
 		g = 0.5 * self.p.Omega
 
-		# Closed-form lower root of the 2x2 [[Eex, g],[g, Eph]] block.
-		# E_+/- = (Eex + Eph)/2 +/- sqrt(((Eex - Eph)/2)^2 + g^2)
-		# Lower polariton is the minus branch (continuous in k by construction).
+		# Closed-form roots of the 2x2 [[Eex, g],[g, Eph]] block:
+		#     E_+/- = (Eex + Eph)/2 +/- sqrt(((Eex - Eph)/2)^2 + g^2)
+		# Lower polariton is the root with the smaller real part (under-damped)
+		# or the more-negative imaginary part (over-damped tie-break). Selecting
+		# explicitly between (hs - disc) and (hs + disc) avoids sqrt branch-cut
+		# jumps in over-damped regions where Im[disc^2] flips sign due to
+		# floating-point noise (e.g. exactly at k=0 with complex Eex, real Eph).
 		half_sum  = 0.5 * (Eex + Eph)
 		half_diff = 0.5 * (Eex - Eph)
 		disc      = np.sqrt(half_diff * half_diff + g * g)
-		return half_sum - disc
+		minus     = half_sum - disc
+		plus      = half_sum + disc
+		swap = (minus.real > plus.real) | (
+			(minus.real == plus.real) & (minus.imag > plus.imag)
+		)
+		return np.where(swap, plus, minus)

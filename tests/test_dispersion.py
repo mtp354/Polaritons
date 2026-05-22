@@ -221,7 +221,8 @@ class TestELPAnalyticAgreesWithEigvals:
 			np.testing.assert_allclose(got, expected, rtol=1e-12, atol=1e-12)
 
 	def test_matches_eigvals_complex_Q(self, params_nat, q_grid_nat, eta_grid):
-		# Complex Q -> complex Eex; LP is the lower-real-part root.
+		# Complex Q -> complex Eex; LP is the eigenvalue with the lower real
+		# part (under-damped) or the more-negative imaginary part (over-damped).
 		rng = np.random.default_rng(1)
 		Q = (rng.normal(size=(len(eta_grid), len(q_grid_nat)))
 		     + 1j * rng.normal(size=(len(eta_grid), len(q_grid_nat))))
@@ -232,10 +233,39 @@ class TestELPAnalyticAgreesWithEigvals:
 			Eex = np.asarray(model.E_ex(k_arr, eta), dtype=complex)
 			Eph = np.asarray(model.E_ph(k_arr, eta), dtype=complex)
 			g = 0.5 * model.p.Omega
-			# Compare against the closed-form root with the principal sqrt.
-			half_sum  = 0.5 * (Eex + Eph)
-			half_diff = 0.5 * (Eex - Eph)
-			disc      = np.sqrt(half_diff**2 + g**2)
-			expected  = half_sum - disc
 			got = model.E_LP(k_arr, eta)
-			np.testing.assert_allclose(got, expected, rtol=1e-12, atol=1e-12)
+			for i in range(len(k_arr)):
+				vals = np.linalg.eigvals(
+					np.array([[Eex[i], g], [g, Eph[i]]], dtype=complex)
+				)
+				# E_LP must match one of the two eigenvalues to high precision.
+				diffs = np.abs(vals - got[i])
+				assert diffs.min() < 1e-10, (vals, got[i])
+				# And it must be the lower-real-part root (with a small
+				# imaginary tie-break: more-negative imag for the LP).
+				other = vals[1 - int(np.argmin(diffs))]
+				if abs(other.real - got[i].real) > 1e-10:
+					assert got[i].real <= other.real + 1e-12
+				else:
+					assert got[i].imag <= other.imag + 1e-12
+
+	def test_complex_Q_branch_continuous_through_zero(self, params_nat, eta_grid):
+		# Regression: at k=0 with complex Eex but real Eph (tuned cavity),
+		# the discriminant^2 sits on the sqrt branch cut. Floating-point noise
+		# previously flipped the LP root onto the UP branch at k=0 only.
+		q_grid = np.linspace(0.0, 1.0, 32)
+		# Q with a large imaginary part (over-damped regime).
+		Q = np.zeros((len(eta_grid), len(q_grid)), dtype=complex)
+		for ei, eta in enumerate(eta_grid):
+			if eta == 0.0:
+				continue
+			Q[ei, :] = (1.0 + 0.0 * q_grid) + 1j * (10.0 + 0.0 * q_grid)
+		model = DispersionModel(params_nat, q_grid, eta_grid, Q)
+		ks = np.array([0.0, 1e-12, 1e-10, 1e-8])
+		for eta in eta_grid:
+			if eta == 0.0:
+				continue
+			Elp = model.E_LP(ks, eta, disorder_tuned=True)
+			# LP must be continuous across k=0: every point close to k=0 value.
+			np.testing.assert_allclose(Elp.real, Elp[0].real, atol=1e-6)
+			np.testing.assert_allclose(Elp.imag, Elp[0].imag, atol=1e-6)
