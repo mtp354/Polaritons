@@ -187,7 +187,14 @@ class DispersionModel:
 		disc      = np.sqrt(half_diff * half_diff + g * g)
 		minus     = half_sum - disc
 		plus      = half_sum + disc
-		swap = (minus.real > plus.real) | (
-			(minus.real == plus.real) & (minus.imag > plus.imag)
+		# Tolerance for treating Re[minus] and Re[plus] as equal (the over-
+		# damped regime where the two polaritons share a real part). Scale by
+		# the natural energy scale of the problem to be FP-robust.
+		scale     = max(abs(g), 1.0)
+		real_diff = (minus.real - plus.real) / scale
+		swap = np.where(
+			np.abs(real_diff) > 1e-10,
+			real_diff > 0,
+			minus.imag > plus.imag,
 		)
 		return np.where(swap, plus, minus)
