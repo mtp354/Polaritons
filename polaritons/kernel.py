@@ -269,6 +269,7 @@ def find_kernel_truncation(
 	k_search_max = float(k_start) if k_start is not None else 20.0 * k_lower
 	k_search_max = max(k_search_max, 2.0 * k_lower)
 
+	prev_min_ratio: float | None = None
 	for _ in range(max_expansions + 1):
 		t_probe = np.linspace(0.0, k_search_max, int(n_probe))
 		K_diag  = np.abs(_kernel_diagonal(K_fn, t_probe))
@@ -285,6 +286,21 @@ def find_kernel_truncation(
 				else:
 					t = float(k0 + (target - K0) * (k1 - k0) / (K1 - K0))
 			return max(t, float(k_lower))
+
+		# Plateau detection: if the minimum |K(t,t)| over the probe range
+		# stops decreasing as we expand, the angular quadrature has hit its
+		# numerical aliasing floor (typical for the Gaussian kernel when
+		# n_gauss is too small to resolve the peak in theta at large q,k).
+		# Further expansion will not cross the threshold; report it now.
+		cur_min_ratio = float(K_diag.min()) / abs(K00)
+		if prev_min_ratio is not None and cur_min_ratio >= 0.95 * prev_min_ratio:
+			raise RuntimeError(
+				f"|K(t,t)|/|K(0,0)| plateaued at ~{cur_min_ratio:.3g} >= threshold "
+				f"{threshold:g} as t was expanded to {k_search_max:g}. This is the "
+				"angular-quadrature aliasing floor; increase n_gauss when building "
+				"the kernel (especially for the Gaussian kernel at large xi*t)."
+			)
+		prev_min_ratio = cur_min_ratio
 		k_search_max *= 2.0
 
 	raise RuntimeError(
