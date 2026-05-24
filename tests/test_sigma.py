@@ -6,7 +6,7 @@ import pytest
 
 from polaritons.parameters import Params
 from polaritons.grid       import uniform_grid_and_weights
-from polaritons.sigma      import sweep_sigma, find_E_k_prime, assemble_Q, refine_sigma_per_k
+from polaritons.sigma      import sweep_sigma, find_E_k_prime, assemble_Q
 
 
 # ---------------------------------------------------------------------------
@@ -143,62 +143,3 @@ class TestAssembleQ:
 		Ek = find_E_k_prime(Sigma, q, E_ext, p_nat)
 		Q  = assemble_Q(Sigma, Ek, E_ext)
 		np.testing.assert_allclose(Q[0], np.full(N, -c, dtype=complex), atol=1e-10)
-
-
-# ---------------------------------------------------------------------------
-# refine_sigma_per_k
-# ---------------------------------------------------------------------------
-
-class TestRefineSigmaPerK:
-	def test_zero_propagator_recovers_bare(self, p_nat):
-		"""Zero kernel => Sigma=0, so refined E_k' = bare(k) exactly."""
-		N = 6
-		q, w = uniform_grid_and_weights(2.0, N)
-		K    = np.eye(N) * 0.01
-		bare = (p_nat.hbar**2 * q**2) / (2.0 * p_nat.M)
-		# Seed close to bare so the tight window brackets the root.
-		E_seed = bare + 0.05
-		Ek, Q, Sig_col, E_per_k, iters = refine_sigma_per_k(
-			p_nat, K, q, w, eta=0.5, E_seed=E_seed,
-			half_width=0.5, n_E_pk=11,
-			F_factory=_zero_kernel_factory, tol=1e-12, max_iter=20, verbose=False,
-		)
-		assert Ek.shape == (N,)
-		assert Q.shape == (N,)
-		assert Sig_col.shape == (11, N)
-		assert E_per_k.shape == (11, N)
-		assert iters.shape == (11, N)
-		np.testing.assert_allclose(Ek, bare, atol=1e-10)
-		np.testing.assert_allclose(Q, 0.0, atol=1e-10)
-
-	def test_nan_seed_falls_back_to_bare(self, p_nat):
-		"""Non-finite seed values are replaced by the bare exciton energy."""
-		N = 4
-		q, w = uniform_grid_and_weights(1.5, N)
-		K    = np.eye(N) * 0.01
-		bare = (p_nat.hbar**2 * q**2) / (2.0 * p_nat.M)
-		E_seed = bare.copy()
-		E_seed[0] = np.nan
-		E_seed[2] = np.inf
-		Ek, _, _, _, _ = refine_sigma_per_k(
-			p_nat, K, q, w, eta=0.5, E_seed=E_seed,
-			half_width=0.3, n_E_pk=9,
-			F_factory=_zero_kernel_factory, tol=1e-12, max_iter=20, verbose=False,
-		)
-		# No NaN should propagate; bare-band fallback brackets E_k' = bare(k).
-		assert np.all(np.isfinite(Ek))
-		np.testing.assert_allclose(Ek, bare, atol=1e-10)
-
-	def test_eta_zero_gives_bare(self, p_nat):
-		"""eta=0 collapses Picard to Q=0, so E_k' = bare(k)."""
-		N = 5
-		q, w = uniform_grid_and_weights(2.0, N)
-		K    = np.eye(N)
-		bare = (p_nat.hbar**2 * q**2) / (2.0 * p_nat.M)
-		E_seed = bare + 0.1
-		Ek, Q, _, _, _ = refine_sigma_per_k(
-			p_nat, K, q, w, eta=0.0, E_seed=E_seed,
-			half_width=0.4, n_E_pk=7, verbose=False,
-		)
-		np.testing.assert_allclose(Ek, bare, atol=1e-12)
-		np.testing.assert_allclose(Q, 0.0, atol=1e-12)

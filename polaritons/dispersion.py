@@ -126,24 +126,37 @@ class DispersionModel:
 
 	def E_ph(self, k_nat: float | np.ndarray, eta: float) -> np.ndarray:
 		"""
-		Photon dispersion in the band-bottom-relative convention:
+		Photon dispersion in the band-bottom-relative convention,
+		**tuned to the full (complex) exciton energy at k=0**:
 
 		    E_ph(k) = sqrt((hbar*c*k/n)^2 + E_0_abs^2) - E_band_bottom,
 
-		where E_0_abs = E_band_bottom + Re[E_ex(0, eta)] is the absolute
-		cavity energy at k=0 and E_band_bottom = E_gap - E_bind is the
-		semiconductor offset.  This preserves the tuning condition
-		E_ph(0) = Re[E_ex(0, eta)] in the band-bottom-relative convention.
+		where ``E_0_abs = E_band_bottom + E_ex(0, eta)`` (complex) and
+		``E_band_bottom = E_gap - E_bind`` is the semiconductor offset.
+
+		Tuning to the **complex** exciton energy (rather than to ``Re[E_ex]``
+		only) gives the cavity photon the same disorder-induced linewidth as
+		the exciton at k=0. This ensures the 2x2 exciton-photon block is
+		diagonally degenerate at k=0, so the lower polariton has exactly
+		``|X_LP|^2 = |C_LP|^2 = 1/2`` at k=0 for every disorder amplitude
+		(not only in the under-damped regime).
+
+		The return value is therefore complex in general; the imaginary part
+		vanishes when ``Im[E_ex(0, eta)] = 0`` (e.g. at ``eta = 0``).
 		"""
 		p             = self.p
 		k             = np.asarray(k_nat, dtype=float)
 		E_band_bottom = float(p.E_gap - p.E_bind)
-		E_0_abs       = E_band_bottom + float(np.real(self.E_ex(0.0, eta)))
+		E_0_abs       = E_band_bottom + complex(self.E_ex(0.0, eta))
 		return np.sqrt((p.hbar * p.c * k / p.n_refr)**2 + E_0_abs**2) - E_band_bottom
 
 	def E_ph_untuned(self, k_nat: float | np.ndarray) -> np.ndarray:
 		"""Photon dispersion tuned to the disorder-free (eta=0) exciton energy
-		(band-bottom-relative; see E_ph for the convention)."""
+		(band-bottom-relative; see E_ph for the convention).
+
+		``E_ex(0, 0) = 0`` in the band-bottom-relative convention with no
+		disorder, so this dispersion is purely real.
+		"""
 		p             = self.p
 		k             = np.asarray(k_nat, dtype=float)
 		E_band_bottom = float(p.E_gap - p.E_bind)

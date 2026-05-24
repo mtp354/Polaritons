@@ -9,8 +9,12 @@ Both kernel factories return a single callable::
 	K = make_kernel_gaussian(p)
 	matrix = K(q_array, k_array)        # shape (N_q, N_k)
 
-Angular quadrature is performed with Gauss-Legendre nodes on [0, 2π] and
-the computation is blocked along the q-axis so peak memory is bounded.
+Angular quadrature is performed with the uniform trapezoid rule on
+[0, 2π]. Because the angular integrand is a smooth 2π-periodic function,
+the trapezoid rule converges exponentially in the number of nodes (unlike
+Gauss-Legendre on a periodic interval, which only converges algebraically
+and can introduce visible high-frequency oscillations in the integrated
+result). Computation is blocked along the q-axis so peak memory is bounded.
 """
 
 from __future__ import annotations
@@ -40,11 +44,20 @@ def make_propagator(p: Params, epsilon: float = 1e-9):
 	return F
 
 
-def _gauss_legendre_theta(n_gauss: int) -> tuple[np.ndarray, np.ndarray]:
-	"""Gauss-Legendre nodes mapped from [-1,1] -> [0, 2pi]."""
-	x, w = np.polynomial.legendre.leggauss(n_gauss)
-	theta_w   = np.pi * w
-	cos_theta = np.cos(np.pi * (x + 1.0))
+def _trapezoid_theta(n_nodes: int) -> tuple[np.ndarray, np.ndarray]:
+	"""Uniform trapezoid nodes on [0, 2π) for a periodic integrand.
+
+	For smooth 2π-periodic integrands the composite trapezoid rule on
+	equally-spaced nodes converges exponentially fast, so the integration
+	error drops well below double precision for very modest ``n_nodes``.
+	The endpoint ``2π`` is omitted to avoid double-counting the periodic
+	image of ``0``.
+	"""
+	if n_nodes < 4:
+		raise ValueError(f"n_nodes must be >= 4; got {n_nodes}")
+	theta     = (2.0 * np.pi / n_nodes) * np.arange(n_nodes)
+	theta_w   = np.full(n_nodes, 2.0 * np.pi / n_nodes)
+	cos_theta = np.cos(theta)
 	return cos_theta, theta_w
 
 
@@ -70,13 +83,15 @@ def make_kernel_gaussian(p: Params, n_gauss: int = 96):
 	where p² = q[i]² + k[j]² − 2 q[i] k[j] cosθ  and
 	bracket(p²) = (p²+shift_h)^{−3/2}/m_h² − (p²+shift_e)^{−3/2}/m_e²
 
-	Angular integration uses ``n_gauss``-point Gauss-Legendre quadrature.
-	The q-axis is processed in blocks of ``block_size`` to bound peak memory.
+	Angular integration uses ``n_gauss``-node uniform trapezoid quadrature
+	(spectrally accurate for the periodic integrand). The q-axis is
+	processed in blocks of ``block_size`` to bound peak memory.
 
 	Parameters
 	----------
 	p       : Params in natural units
-	n_gauss : number of Gauss-Legendre nodes for the θ integration
+	n_gauss : number of trapezoid nodes for the θ integration (kept under
+	          this legacy name to preserve the call signature)
 
 	Returns
 	-------
@@ -90,7 +105,7 @@ def make_kernel_gaussian(p: Params, n_gauss: int = 96):
 		/ (np.pi**2 * a**6 * m_e**2 * m_h**2)
 	)
 	shift_e, shift_h = _kernel_shifts(p)
-	cos_theta, theta_w = _gauss_legendre_theta(n_gauss)
+	cos_theta, theta_w = _trapezoid_theta(n_gauss)
 
 	def K(q: np.ndarray, k: np.ndarray, block_size: int = 64) -> np.ndarray:
 		q = np.asarray(q, dtype=float)
@@ -118,12 +133,14 @@ def make_kernel_nongaussian(p: Params, n_gauss: int = 96):
 
 	The kernel has three terms:
 	t1, t2 — analytic closed-form outer products (no integration)
-	t3     — angular integral evaluated with ``n_gauss``-point GL quadrature
+	t3     — angular integral evaluated with ``n_gauss``-node trapezoid
+	         quadrature (spectrally accurate for the periodic integrand)
 
 	Parameters
 	----------
 	p       : Params in natural units
-	n_gauss : number of Gauss-Legendre nodes for the θ integration in t3
+	n_gauss : number of trapezoid nodes for the θ integration in t3 (legacy
+	          parameter name preserved for API compatibility)
 
 	Returns
 	-------
@@ -137,7 +154,7 @@ def make_kernel_nongaussian(p: Params, n_gauss: int = 96):
 		/ (np.pi * a**6 * m_e**2 * m_h**2)
 	)
 	shift_e, shift_h = _kernel_shifts(p)
-	cos_theta, theta_w = _gauss_legendre_theta(n_gauss)
+	cos_theta, theta_w = _trapezoid_theta(n_gauss)
 
 	def K(q: np.ndarray, k: np.ndarray, block_size: int = 64) -> np.ndarray:
 		q = np.asarray(q, dtype=float)

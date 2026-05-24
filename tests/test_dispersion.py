@@ -98,22 +98,23 @@ class TestEEx:
 
 class TestEPh:
 	def test_tuned_cavity_at_k0(self, simple_model, eta_grid):
-		"""E_ph(0, eta) must equal E_ex(0, eta) by construction."""
+		"""E_ph(0, eta) must equal E_ex(0, eta) by construction (complex)."""
 		for eta in eta_grid:
-			E_ex_0 = _e0(simple_model, eta)
-			E_ph_0 = float(simple_model.E_ph(0.0, eta))
-			assert E_ph_0 == pytest.approx(E_ex_0, rel=1e-6)
+			E_ex_0 = complex(simple_model.E_ex(0.0, eta))
+			E_ph_0 = complex(simple_model.E_ph(0.0, eta))
+			assert E_ph_0.real == pytest.approx(E_ex_0.real, rel=1e-6, abs=1e-12)
+			assert E_ph_0.imag == pytest.approx(E_ex_0.imag, rel=1e-6, abs=1e-12)
 
 	def test_E_ph_increases_with_k(self, simple_model):
-		"""Photon dispersion is dispersive (increases with |k|)."""
+		"""Photon dispersion is dispersive (Re part increases with |k|)."""
 		k_vals  = simple_model.q_grid_nat[1:6]
-		E_vals  = simple_model.E_ph(k_vals, 0.0)
+		E_vals  = np.real(simple_model.E_ph(k_vals, 0.0))
 		assert np.all(np.diff(E_vals) > 0)
 
 	def test_E_ph_untuned_at_k0(self, simple_model):
 		"""E_ph_untuned(0) = E_ex(0, eta=0) regardless of eta."""
 		E_ex_0_eta0 = _e0(simple_model, 0.0)
-		E_ph_untuned_0 = float(simple_model.E_ph_untuned(0.0))
+		E_ph_untuned_0 = float(np.real(simple_model.E_ph_untuned(0.0)))
 		assert E_ph_untuned_0 == pytest.approx(E_ex_0_eta0, rel=1e-6)
 
 
