@@ -22,6 +22,7 @@ def picard_iteration(
 	max_iter : int   = 5000,
 	w        : float = 1.0,
 	verbose  : bool  = True,
+	label    : str   = "",
 ) -> tuple[np.ndarray, np.ndarray]:
 	"""
 	Vectorised Picard iteration with non-uniform trapezoid quadrature.
@@ -38,6 +39,9 @@ def picard_iteration(
 	max_iter : maximum number of iterations
 	w        : mixing parameter (w=1 → pure Picard, w<1 → under-relaxation)
 	verbose  : print progress every 100 iterations
+	label    : optional string prepended to each verbose progress line
+	           (e.g. ``"eta=0.20 E_ext=-1.234"``) to identify which solve
+	           is being reported when many Picard runs share a log stream.
 
 	Returns
 	-------
@@ -55,7 +59,8 @@ def picard_iteration(
 		delta[iteration] = diff
 
 		if verbose and iteration % 100 == 0:
-			print(f"  iter {iteration:5d}  |ΔQ| = {diff:.3e}")
+			prefix = f"[{label}] " if label else ""
+			print(f"  {prefix}iter {iteration:5d}  |ΔQ| = {diff:.3e}")
 
 		Q = Q_new
 		if diff < tol:

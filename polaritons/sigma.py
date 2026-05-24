@@ -110,9 +110,11 @@ def sweep_sigma(
 					seed = Sigma_arr[ei, ej - 1].copy()
 					seed = -seed                         # back to Q = -Sigma
 				F_bound = partial(F_full, E_ext=float(E_ext), eta=float(eta))
+				solve_label = f"eta={float(eta):.3g} E_ext={float(E_ext):+.4g}"
 				Q_conv, delta = picard_iteration(
 					seed, q, K_matrix, weights, F_bound,
 					tol=tol, max_iter=max_iter, w=w, verbose=verbose,
+					label=solve_label,
 				)
 				nonzero = np.flatnonzero(delta != 0.0)
 				it_count = int(nonzero[-1] + 1) if nonzero.size else 0
