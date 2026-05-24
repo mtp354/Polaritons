@@ -42,21 +42,48 @@ def effective_mass(model: DispersionModel, eta: float, k_grid: np.ndarray,
 		raise ValueError("effective_mass requires at least three non-negative k points.")
 
 	k.sort()
-	n_fit = min(8, len(k))
+
+	# Evaluate E_LP on the full provided grid.
+	E_all = np.real(model.E_LP(k, eta, disorder_tuned=disorder_tuned))
+
+	# Adaptive fit window: keep the contiguous k=0 prefix that stays within
+	# a small fraction of the Rabi coupling g = Omega/2.  This anchors the
+	# fit to the genuinely parabolic regime of E_LP near k=0 and prevents the
+	# leading slope from being corrupted either by spline noise inside the
+	# first Q(k) knot segment (when the window is too narrow) or by the
+	# polariton's avoided-crossing curvature (when the window is too wide).
+	g_energy   = 0.5 * float(np.real(model.p.Omega))
+	energy_tol = 0.05 * g_energy if g_energy > 0.0 else np.inf
+	delta = np.abs(E_all - E_all[0])
+	# Largest prefix length n such that delta[:n] is all within energy_tol.
+	within = delta <= energy_tol
+	n_fit  = int(np.argmin(within)) if not within.all() else len(k)
+	# Need enough points to fit at least a quadratic in k^2 (degree 2 → 3 pts).
+	n_fit = max(n_fit, 5)
+	n_fit = min(n_fit, len(k))
+
 	k_fit = k[:n_fit]
-	E_fit = np.real(model.E_LP(k_fit, eta, disorder_tuned=disorder_tuned))
+	E_fit = E_all[:n_fit]
 
 	x = k_fit**2
 	x_scale = float(np.max(x))
 	if x_scale <= 0.0:
 		raise ValueError("effective_mass requires at least one positive k point.")
 
+	# Degree-2 fit in x = k^2 (i.e. up to k^4 in k); the leading-x coefficient
+	# absorbs any small higher-order non-parabolicity without contaminating
+	# the curvature at k=0.
 	degree = min(2, len(k_fit) - 1)
 	coeffs = np.polyfit(x / x_scale, E_fit - E_fit[0], deg=degree)
 	slope_at_zero = coeffs[-2] / x_scale
 	d2E = 2.0 * slope_at_zero
 	if not np.isfinite(d2E) or d2E <= 0.0:
-		raise ValueError(f"Non-positive LP curvature at k=0: {d2E!r}")
+		raise ValueError(
+			f"Non-positive LP curvature at k=0: {d2E!r} "
+			f"(n_fit={n_fit}, k_fit_max={float(k_fit[-1]):.3g}, eta={eta}). "
+			"This usually indicates noisy Q(k) near k=0; try widening the "
+			"k_grid or increasing the Picard k-grid resolution."
+		)
 	return float(model.p.hbar**2 / d2E)
 
 
