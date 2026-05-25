@@ -39,6 +39,8 @@ def sweep_sigma(
 	eta_grid    : np.ndarray,
 	F_factory   : Callable[[Params], Callable] | None = None,
 	Q_init      : np.ndarray | None = None,
+	Sigma_seed  : np.ndarray | None = None,
+	solve_mask  : np.ndarray | None = None,
 	tol         : float = 1e-6,
 	max_iter    : int   = 5000,
 	w           : float = 1.0,
@@ -57,8 +59,18 @@ def sweep_sigma(
 	eta_grid    : array of disorder amplitudes, length n_eta
 	F_factory   : callable returning the propagator F(q, Q, E_ext, eta).
 	              Defaults to ``polaritons.kernel.make_propagator(p)``.
-	Q_init      : initial Picard guess for the very first solve. Defaults
-	              to ``(1+1j) * ones(N)``.
+	Q_init      : initial Picard guess. Accepts either a 1-D array of
+	              length N (global initial seed for the very first solve,
+	              backwards-compatible behaviour) or a 3-D array of shape
+	              ``(n_eta, n_E, N)`` giving a per-cell warm start.
+	Sigma_seed  : optional ``(n_eta, n_E, N)`` array of previously
+	              computed ``Sigma`` values. Cells with ``solve_mask`` =
+	              False are not re-solved and instead take their output
+	              from ``Sigma_seed``. When ``solve_mask`` is False at a
+	              cell, ``Sigma_seed`` must be provided for that cell.
+	solve_mask  : optional ``(n_eta, n_E)`` bool array. ``True`` cells
+	              run Picard; ``False`` cells copy ``Sigma_seed``. The
+	              eta=0 short-circuit (Sigma=0) still applies regardless.
 	tol, max_iter, w, verbose
 	            : forwarded to ``picard_iteration``.
 
@@ -69,6 +81,7 @@ def sweep_sigma(
 	            so that on-shell ``Q(k, eta) = -Sigma(k, E_k')``.
 	iters     : int array of shape (n_eta, n_E) with the iteration count
 	            (1 + last index written into ``delta``) for each solve.
+	            Masked-out cells report 0 iterations.
 	"""
 	if F_factory is None:
 		from .kernel import make_propagator
@@ -85,8 +98,43 @@ def sweep_sigma(
 	if weights.shape != (N,):
 		raise ValueError(f"weights must have shape ({N},); got {weights.shape}")
 
+	# Normalise Q_init: support either a single (N,) seed (legacy) or a
+	# per-cell (n_eta, n_E, N) warm-start tensor.
 	if Q_init is None:
-		Q_init = (1.0 + 1.0j) * np.ones(N, dtype=complex)
+		Q_init_arr = (1.0 + 1.0j) * np.ones(N, dtype=complex)
+		per_cell_init = False
+	else:
+		Q_init_arr = np.asarray(Q_init, dtype=complex)
+		if Q_init_arr.shape == (N,):
+			per_cell_init = False
+		elif Q_init_arr.shape == (n_eta, n_E, N):
+			per_cell_init = True
+		else:
+			raise ValueError(
+				f"Q_init must have shape ({N},) or ({n_eta}, {n_E}, {N}); "
+				f"got {Q_init_arr.shape}"
+			)
+
+	if Sigma_seed is not None:
+		Sigma_seed = np.asarray(Sigma_seed, dtype=complex)
+		if Sigma_seed.shape != (n_eta, n_E, N):
+			raise ValueError(
+				f"Sigma_seed must have shape ({n_eta}, {n_E}, {N}); "
+				f"got {Sigma_seed.shape}"
+			)
+
+	if solve_mask is not None:
+		solve_mask = np.asarray(solve_mask, dtype=bool)
+		if solve_mask.shape != (n_eta, n_E):
+			raise ValueError(
+				f"solve_mask must have shape ({n_eta}, {n_E}); "
+				f"got {solve_mask.shape}"
+			)
+		if Sigma_seed is None and not solve_mask.all():
+			raise ValueError(
+				"solve_mask has False entries but Sigma_seed was not "
+				"provided; cannot fill skipped cells."
+			)
 
 	# Sigma_arr stores -Q_picard so that on-shell Q = -Sigma.
 	Sigma_arr = np.zeros((n_eta, n_E, N), dtype=complex)
@@ -94,21 +142,39 @@ def sweep_sigma(
 
 	# Warm-start matrix: prev_eta_Q[j] holds the converged Q from the
 	# previous eta at E_ext index j, used to seed eta_{i+1}.
-	prev_eta_Q = np.tile(Q_init, (n_E, 1))   # shape (n_E, N)
+	if per_cell_init:
+		prev_eta_Q = Q_init_arr[0].copy()      # shape (n_E, N)
+	else:
+		prev_eta_Q = np.tile(Q_init_arr, (n_E, 1))   # shape (n_E, N)
 
 	for ei, eta in enumerate(eta_grid):
-		Q_seed = prev_eta_Q[0].copy()        # seed first E_ext from prev eta
+		Q_seed_cross = prev_eta_Q[0].copy()   # seed first E_ext from prev eta
 		for ej, E_ext in enumerate(E_ext_grid):
+			cell_active = True if solve_mask is None else bool(solve_mask[ei, ej])
+
+			if not cell_active:
+				# Copy the seeded Sigma straight through; no Picard work.
+				Sigma_arr[ei, ej] = Sigma_seed[ei, ej]
+				prev_eta_Q[ej]    = -Sigma_seed[ei, ej]
+				iters[ei, ej]     = 0
+				continue
+
 			if eta == 0.0:
 				# Picard with eta=0 collapses to Q = 0 in one step.
 				Q_conv = np.zeros(N, dtype=complex)
 				it_count = 1
 			else:
-				if ej == 0:
-					seed = Q_seed                        # cross-eta seed
+				# Choose warm-start seed for this Picard solve.
+				if per_cell_init or Sigma_seed is not None:
+					# Prefer per-cell information when supplied.
+					if Sigma_seed is not None:
+						seed = -Sigma_seed[ei, ej].copy()
+					else:
+						seed = Q_init_arr[ei, ej].copy()
+				elif ej == 0:
+					seed = Q_seed_cross                 # cross-eta seed
 				else:
-					seed = Sigma_arr[ei, ej - 1].copy()
-					seed = -seed                         # back to Q = -Sigma
+					seed = -Sigma_arr[ei, ej - 1].copy()  # within-eta seed
 				F_bound = partial(F_full, E_ext=float(E_ext), eta=float(eta))
 				solve_label = f"eta={float(eta):.3g} E_ext={float(E_ext):+.4g}"
 				Q_conv, delta = picard_iteration(
@@ -268,3 +334,288 @@ def assemble_Q(
 		Q_arr[ei, k_valid] = -Sigma_on
 
 	return Q_arr
+
+
+# ---------------------------------------------------------------------------
+# Reuse helpers: resume / reseed / refine a previously-saved Sigma surface
+# ---------------------------------------------------------------------------
+
+def resume_unconverged(
+	p             : Params,
+	K_matrix      : np.ndarray,
+	q             : np.ndarray,
+	weights       : np.ndarray,
+	E_ext_grid    : np.ndarray,
+	eta_grid      : np.ndarray,
+	Sigma_prev    : np.ndarray,
+	iters_prev    : np.ndarray,
+	prev_max_iter : int,
+	*,
+	w             : float,
+	max_iter      : int,
+	tol           : float = 1e-6,
+	F_factory     : Callable[[Params], Callable] | None = None,
+	verbose       : bool = False,
+) -> tuple[np.ndarray, np.ndarray]:
+	"""
+	Re-run Picard only at cells flagged non-converged in a previous sweep.
+
+	A cell ``(ei, ej)`` is considered non-converged when
+	``iters_prev[ei, ej] == prev_max_iter`` (Picard ran out of iterations).
+	The eta=0 row is always excluded since its solution is exact by
+	construction.
+
+	The resulting Sigma surface equals ``Sigma_prev`` everywhere except
+	at the re-solved cells, which are warm-started by ``-Sigma_prev``
+	and integrated with the new damping ``w`` and ``max_iter``.
+	"""
+	n_eta = len(eta_grid)
+	n_E   = len(E_ext_grid)
+	if Sigma_prev.shape != (n_eta, n_E, len(q)):
+		raise ValueError(
+			f"Sigma_prev must have shape ({n_eta}, {n_E}, {len(q)}); "
+			f"got {Sigma_prev.shape}"
+		)
+	if iters_prev.shape != (n_eta, n_E):
+		raise ValueError(
+			f"iters_prev must have shape ({n_eta}, {n_E}); "
+			f"got {iters_prev.shape}"
+		)
+
+	mask = (iters_prev == int(prev_max_iter))
+	for ei, eta in enumerate(eta_grid):
+		if float(eta) == 0.0:
+			mask[ei, :] = False
+
+	n_to_solve = int(mask.sum())
+	if verbose:
+		print(f"resume_unconverged: re-solving {n_to_solve} of {mask.size} cells "
+		      f"(w={w}, max_iter={max_iter}, tol={tol:g})")
+
+	if n_to_solve == 0:
+		# Nothing to do: return inputs unchanged.
+		return Sigma_prev.copy(), iters_prev.copy()
+
+	Sigma_new, iters_new = sweep_sigma(
+		p, K_matrix, q, weights, E_ext_grid, eta_grid,
+		F_factory=F_factory,
+		Q_init=-Sigma_prev,
+		Sigma_seed=Sigma_prev,
+		solve_mask=mask,
+		tol=tol, max_iter=max_iter, w=w, verbose=verbose,
+	)
+
+	# Carry over the original iteration counts at the cells we did not
+	# touch so the caller can tell apart "previously converged" (small
+	# count) from "skipped in this resume pass" (0).
+	keep = ~mask
+	iters_new[keep] = iters_prev[keep]
+
+	if verbose:
+		still_stuck = int((iters_new[mask] == max_iter).sum())
+		print(f"resume_unconverged: {still_stuck} cells still hit max_iter "
+		      f"after re-solve")
+
+	return Sigma_new, iters_new
+
+
+def rerun_with_seed(
+	p             : Params,
+	K_matrix      : np.ndarray,
+	q             : np.ndarray,
+	weights       : np.ndarray,
+	E_ext_grid    : np.ndarray,
+	eta_grid      : np.ndarray,
+	Sigma_prev    : np.ndarray,
+	*,
+	w             : float,
+	max_iter      : int,
+	tol           : float = 1e-6,
+	F_factory     : Callable[[Params], Callable] | None = None,
+	verbose       : bool = False,
+) -> tuple[np.ndarray, np.ndarray]:
+	"""
+	Re-run the full Picard sweep, warm-starting every cell from
+	``-Sigma_prev``. Use this to re-solve with weaker (or stronger)
+	damping ``w`` from a previously converged surface.
+	"""
+	n_eta = len(eta_grid)
+	n_E   = len(E_ext_grid)
+	if Sigma_prev.shape != (n_eta, n_E, len(q)):
+		raise ValueError(
+			f"Sigma_prev must have shape ({n_eta}, {n_E}, {len(q)}); "
+			f"got {Sigma_prev.shape}"
+		)
+	return sweep_sigma(
+		p, K_matrix, q, weights, E_ext_grid, eta_grid,
+		F_factory=F_factory,
+		Q_init=-Sigma_prev,
+		tol=tol, max_iter=max_iter, w=w, verbose=verbose,
+	)
+
+
+def refine_E_ext_grid(
+	E_ext_grid_old : np.ndarray,
+	p              : Params,
+	t_local        : float,
+	*,
+	n_add          : int,
+	band_pad_omega : float = 0.5,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+	"""
+	Densify an existing E_ext grid by inserting uniform points across
+	the bare-parabola band ``[-pad*Omega, bare_max + pad*Omega]``.
+
+	Parameters
+	----------
+	E_ext_grid_old : strictly-increasing existing grid, length n_E_old
+	p              : natural-unit Params
+	t_local        : kernel truncation in natural units (defines bare_max)
+	n_add          : number of uniform points to attempt to insert in the
+	                 band (duplicates within rel-tol of an existing point
+	                 are discarded)
+	band_pad_omega : extra Omega-widths above and below the parabola band
+
+	Returns
+	-------
+	E_ext_grid_new : merged strictly-increasing grid, length n_E_new
+	new_mask       : bool array of length n_E_new, True at indices that
+	                 were freshly inserted (not present in the old grid)
+	old_to_new_idx : int array of length n_E_old mapping each old E_ext
+	                 value to its position in ``E_ext_grid_new``
+	"""
+	if n_add <= 0:
+		raise ValueError(f"n_add must be positive; got {n_add}")
+
+	E_old = np.asarray(E_ext_grid_old, dtype=float)
+	if E_old.ndim != 1 or np.any(np.diff(E_old) <= 0.0):
+		raise ValueError("E_ext_grid_old must be strictly increasing 1-D array.")
+
+	bare_max = float(p.hbar**2 * float(t_local)**2 / (2.0 * p.M))
+	pad      = float(band_pad_omega) * float(p.Omega)
+	E_lo     = -pad
+	E_hi     = bare_max + pad
+
+	# Generate `n_add` strictly-interior uniform candidate points so they
+	# never coincide with the band endpoints (the existing grid already
+	# samples those when concentrated near the parabola).
+	candidates = np.linspace(E_lo, E_hi, int(n_add) + 2)[1:-1]
+
+	# Drop candidates that match an existing grid point within a relative
+	# tolerance (avoid spurious near-duplicates that np.unique would keep).
+	span = float(E_old[-1] - E_old[0]) if E_old.size > 1 else 1.0
+	tol  = 1e-9 * max(span, 1.0)
+	keep = []
+	for c in candidates:
+		j = int(np.searchsorted(E_old, c))
+		nearest = []
+		if j > 0:
+			nearest.append(E_old[j - 1])
+		if j < E_old.size:
+			nearest.append(E_old[j])
+		if all(abs(c - n) > tol for n in nearest):
+			keep.append(c)
+	fresh = np.array(keep, dtype=float)
+
+	merged = np.unique(np.concatenate([E_old, fresh]))
+	# Identify which merged indices correspond to fresh inserts.
+	new_mask       = np.ones(merged.size, dtype=bool)
+	old_to_new_idx = np.searchsorted(merged, E_old)
+	new_mask[old_to_new_idx] = False
+
+	return merged, new_mask, old_to_new_idx
+
+
+def _interp_sigma_along_E(
+	Sigma_prev   : np.ndarray,
+	E_old        : np.ndarray,
+	E_new_points : np.ndarray,
+) -> np.ndarray:
+	"""
+	Linear interpolation of ``Sigma_prev`` along its E_ext axis at
+	``E_new_points``. Returns an array of shape
+	``(n_eta, len(E_new_points), N)``.
+	"""
+	n_eta, n_E_old, N = Sigma_prev.shape
+	if E_old.shape != (n_E_old,):
+		raise ValueError("E_old length must match Sigma_prev.shape[1].")
+
+	# Bracketing indices for each new E value.
+	idx = np.searchsorted(E_old, E_new_points) - 1
+	idx = np.clip(idx, 0, n_E_old - 2)
+	E0  = E_old[idx]                              # (n_new,)
+	E1  = E_old[idx + 1]                          # (n_new,)
+	t   = ((E_new_points - E0) / (E1 - E0))[None, :, None]  # (1, n_new, 1)
+
+	S0 = Sigma_prev[:, idx,     :]                # (n_eta, n_new, N)
+	S1 = Sigma_prev[:, idx + 1, :]                # (n_eta, n_new, N)
+	return (1.0 - t) * S0 + t * S1
+
+
+def refine_sigma(
+	p              : Params,
+	K_matrix       : np.ndarray,
+	q              : np.ndarray,
+	weights        : np.ndarray,
+	E_ext_grid_old : np.ndarray,
+	eta_grid       : np.ndarray,
+	Sigma_prev     : np.ndarray,
+	t_local        : float,
+	*,
+	n_add          : int,
+	band_pad_omega : float = 0.5,
+	w              : float,
+	max_iter       : int,
+	tol            : float = 1e-6,
+	F_factory      : Callable[[Params], Callable] | None = None,
+	verbose        : bool = False,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+	"""
+	Add ``n_add`` E_ext samples in the bare-parabola band and solve Picard
+	only at the freshly inserted columns. Existing columns are copied
+	through unchanged.
+
+	Returns
+	-------
+	Sigma_new      : (n_eta, n_E_new, N) complex
+	iters_new      : (n_eta, n_E_new) int (0 at copied columns)
+	E_ext_grid_new : (n_E_new,) float, strictly increasing
+	"""
+	E_old = np.asarray(E_ext_grid_old, dtype=float)
+	n_eta = len(eta_grid)
+	N     = len(q)
+	if Sigma_prev.shape != (n_eta, E_old.size, N):
+		raise ValueError(
+			f"Sigma_prev must have shape ({n_eta}, {E_old.size}, {N}); "
+			f"got {Sigma_prev.shape}"
+		)
+
+	E_new, new_mask, old_to_new_idx = refine_E_ext_grid(
+		E_old, p, t_local,
+		n_add=n_add, band_pad_omega=band_pad_omega,
+	)
+	n_E_new = E_new.size
+
+	# Assemble the full seed surface on the refined grid.
+	Sigma_seed = np.empty((n_eta, n_E_new, N), dtype=complex)
+	Sigma_seed[:, old_to_new_idx, :] = Sigma_prev
+	if new_mask.any():
+		Sigma_seed[:, new_mask, :] = _interp_sigma_along_E(
+			Sigma_prev, E_old, E_new[new_mask],
+		)
+
+	solve_mask = np.broadcast_to(new_mask, (n_eta, n_E_new)).copy()
+
+	if verbose:
+		print(f"refine_sigma: inserted {int(new_mask.sum())} new E_ext points "
+		      f"(total {n_E_new}); solving Picard on {int(solve_mask.sum())} cells")
+
+	Sigma_new, iters_new = sweep_sigma(
+		p, K_matrix, q, weights, E_new, eta_grid,
+		F_factory=F_factory,
+		Q_init=-Sigma_seed,
+		Sigma_seed=Sigma_seed,
+		solve_mask=solve_mask,
+		tol=tol, max_iter=max_iter, w=w, verbose=verbose,
+	)
+	return Sigma_new, iters_new, E_new
