@@ -234,7 +234,7 @@ def hide_axis_offset(ax, axes=("x", "y")):
 		getattr(ax, f"{axis_name}axis").get_offset_text().set_visible(False)
 
 
-def tick_formatter(style="number", *, decimals=2, zero_tol=1e-12):
+def tick_formatter(style="number", *, decimals=2, zero_tol=1e-12, max_abs=None, low=1e-4, high=1e5):
 	from matplotlib.ticker import FuncFormatter
 	if style == "number":
 		return FuncFormatter(lambda value, pos: format_number(value))
@@ -242,12 +242,29 @@ def tick_formatter(style="number", *, decimals=2, zero_tol=1e-12):
 		return FuncFormatter(lambda value, pos: format_power_value(value))
 	if style == "fixed_power":
 		return FuncFormatter(lambda value, pos: format_power_value_fixed(value, decimals=decimals, zero_tol=zero_tol))
+	if style == "smart":
+		# Plain number unless the axis range sits outside [low, high); then
+		# fall back to fixed-decimal scientific form (e.g. 1.23×10⁻⁵).
+		use_sci = (
+			max_abs is not None
+			and np.isfinite(max_abs)
+			and max_abs > 0.0
+			and (abs(max_abs) < low or abs(max_abs) >= high)
+		)
+		if use_sci:
+			return FuncFormatter(lambda value, pos: format_power_value_fixed(value, decimals=decimals, zero_tol=zero_tol))
+		return FuncFormatter(lambda value, pos: format_number(value))
 	if callable(style):
 		return FuncFormatter(lambda value, pos: style(value))
 	raise ValueError(f"Unknown tick formatter: {style!r}")
 
 
-def format_plot_ticks(ax, *, axes=("x", "y"), ticks=None, nbins=None, formatter="number", decimals=2, zero_tol=1e-12):
+def _smart_axis_max_abs(ax, axis_name: str) -> float:
+	lo, hi = getattr(ax, f"get_{axis_name}lim")()
+	return max(abs(float(lo)), abs(float(hi)))
+
+
+def format_plot_ticks(ax, *, axes=("x", "y"), ticks=None, nbins=None, formatter="number", decimals=2, zero_tol=1e-12, low=1e-4, high=1e5):
 	from matplotlib.ticker import FixedLocator, MaxNLocator
 	if ticks is not None and nbins is not None:
 		raise ValueError("Pass either ticks or nbins, not both.")
@@ -257,7 +274,8 @@ def format_plot_ticks(ax, *, axes=("x", "y"), ticks=None, nbins=None, formatter=
 			axis.set_major_locator(FixedLocator(ticks))
 		elif nbins is not None:
 			axis.set_major_locator(MaxNLocator(nbins=nbins, min_n_ticks=2))
-		axis.set_major_formatter(tick_formatter(formatter, decimals=decimals, zero_tol=zero_tol))
+		max_abs = _smart_axis_max_abs(ax, axis_name) if formatter == "smart" else None
+		axis.set_major_formatter(tick_formatter(formatter, decimals=decimals, zero_tol=zero_tol, max_abs=max_abs, low=low, high=high))
 	hide_axis_offset(ax)
 
 

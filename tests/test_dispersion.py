@@ -69,12 +69,29 @@ class TestQInterpolation:
 		result = model.Q(q_grid_nat[4], eta_grid[2])
 		assert result == pytest.approx(eta_grid[2] + q_grid_nat[4])
 
-	def test_Q_rejects_unsolved_eta(self, params_nat, q_grid_nat, eta_grid):
-		Q_nat = np.zeros((len(eta_grid), len(q_grid_nat)), dtype=complex)
+	def test_Q_interpolates_off_grid_eta_linearly(self, params_nat, q_grid_nat, eta_grid):
+		"""Off-grid eta is linearly interpolated between bracketing slices."""
+		Q_nat = np.empty((len(eta_grid), len(q_grid_nat)), dtype=complex)
+		for i, eta in enumerate(eta_grid):
+			Q_nat[i] = eta * (1.0 + 2.0j)
 		model = DispersionModel(params_nat, q_grid_nat, eta_grid, Q_nat)
 
-		with pytest.raises(ValueError, match="only interpolated over k"):
-			model.Q(q_grid_nat[4], 0.25)
+		# Halfway between eta_grid[1] and eta_grid[2].
+		eta_mid = 0.5 * (eta_grid[1] + eta_grid[2])
+		expected = eta_mid * (1.0 + 2.0j)
+		result = model.Q(q_grid_nat[3], eta_mid)
+		assert result == pytest.approx(expected, rel=1e-12, abs=1e-14)
+
+	def test_Q_clamps_eta_outside_grid(self, params_nat, q_grid_nat, eta_grid):
+		"""Eta beyond the grid is clamped to the nearest endpoint."""
+		Q_nat = np.zeros((len(eta_grid), len(q_grid_nat)), dtype=complex)
+		for i, eta in enumerate(eta_grid):
+			Q_nat[i] = eta + 0j
+		model = DispersionModel(params_nat, q_grid_nat, eta_grid, Q_nat)
+
+		# Above the grid → clamped to eta_grid[-1].
+		result_above = model.Q(q_grid_nat[2], float(eta_grid[-1]) + 5.0)
+		assert result_above == pytest.approx(eta_grid[-1] + 0j)
 
 
 class TestEEx:

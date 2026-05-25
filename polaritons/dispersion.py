@@ -74,14 +74,28 @@ class DispersionModel:
 				CubicSpline(self.q_grid_nat[finite], row[finite], extrapolate=True)
 			)
 
-	def _eta_index(self, eta: float) -> int:
-		"""Index of an already-solved eta value."""
-		matches = np.flatnonzero(np.isclose(self.eta_grid, eta, rtol=1e-12, atol=1e-12))
-		if len(matches) != 1:
-			raise ValueError(
-				f"eta={eta!r} is not in eta_grid; Q is only interpolated over k."
-			)
-		return int(matches[0])
+	def _eta_bracket(self, eta: float) -> tuple[int, int, float]:
+		"""
+		Return ``(i_lo, i_hi, w)`` such that
+		``Q(k, eta) ≈ (1-w) * Q_spline[i_lo](k) + w * Q_spline[i_hi](k)``.
+
+		``eta`` is clamped to ``[eta_grid[0], eta_grid[-1]]``; exact grid
+		points yield ``w == 0`` (or ``w == 1``) so the on-grid result is
+		exactly the saved spline value.
+		"""
+		eta_grid = self.eta_grid
+		eta_clamped = float(np.clip(eta, eta_grid[0], eta_grid[-1]))
+		i_hi = int(np.searchsorted(eta_grid, eta_clamped, side="left"))
+		if i_hi <= 0:
+			return 0, 0, 0.0
+		if i_hi >= len(eta_grid):
+			return len(eta_grid) - 1, len(eta_grid) - 1, 0.0
+		if eta_clamped == eta_grid[i_hi]:
+			return i_hi, i_hi, 0.0
+		i_lo = i_hi - 1
+		span = eta_grid[i_hi] - eta_grid[i_lo]
+		w    = 0.0 if span == 0.0 else (eta_clamped - eta_grid[i_lo]) / span
+		return i_lo, i_hi, float(w)
 
 	# ------------------------------------------------------------------
 	# Self-energy
@@ -89,12 +103,17 @@ class DispersionModel:
 
 	def Q(self, k_nat: float | np.ndarray, eta: float) -> complex | np.ndarray:
 		"""
-		Self-energy Q(k, eta) interpolated over k for a solved eta value.
+		Self-energy Q(k, eta) interpolated over k (cubic spline) and over
+		eta (linear between solved eta slices).
+
+		``eta`` outside the solved grid is clamped to the grid endpoints.
+		Real and imaginary parts are interpolated together via complex
+		linear blending of the two bracketing spline evaluations.
 
 		Parameters
 		----------
 		k_nat : momentum in natural units
-		eta   : solved disorder parameter value
+		eta   : disorder parameter value (any real number; interpolated)
 
 		Returns
 		-------
@@ -103,7 +122,12 @@ class DispersionModel:
 		k_nat = np.asarray(k_nat, dtype=float)
 		if eta == 0.0:
 			return np.zeros_like(k_nat, dtype=complex)
-		return self._Q_splines[self._eta_index(eta)](k_nat)
+		i_lo, i_hi, w = self._eta_bracket(float(eta))
+		Q_lo = self._Q_splines[i_lo](k_nat)
+		if i_lo == i_hi or w == 0.0:
+			return Q_lo
+		Q_hi = self._Q_splines[i_hi](k_nat)
+		return (1.0 - w) * Q_lo + w * Q_hi
 
 	# ------------------------------------------------------------------
 	# Dispersion relations

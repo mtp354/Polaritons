@@ -165,3 +165,29 @@ class TestQEnergyValues:
 		Q = np.array([1000.0])
 		_, label, _ = q_energy_values(Q, p_nat, threshold_eV=0.1)
 		assert label == "eV"
+
+
+# ---------------------------------------------------------------------------
+# Smart tick formatter (requires matplotlib)
+# ---------------------------------------------------------------------------
+
+class TestSmartFormatter:
+	def test_smart_uses_plain_in_band(self):
+		pytest.importorskip("matplotlib")
+		from polaritons.plotting import tick_formatter
+		# max_abs in [1e-4, 1e5) -> plain number, no '×10'
+		fmt = tick_formatter("smart", max_abs=1.5e2)
+		assert "\u00d710" not in fmt(1234.0, 0)
+
+	def test_smart_uses_scientific_below_low(self):
+		pytest.importorskip("matplotlib")
+		from polaritons.plotting import tick_formatter
+		fmt = tick_formatter("smart", max_abs=1e-5, decimals=2)
+		out = fmt(1e-5, 0)
+		assert "\u00d710" in out
+
+	def test_smart_uses_scientific_above_high(self):
+		pytest.importorskip("matplotlib")
+		from polaritons.plotting import tick_formatter
+		fmt = tick_formatter("smart", max_abs=1e6, decimals=2)
+		assert "\u00d710" in fmt(1e6, 0)
