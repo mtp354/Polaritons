@@ -164,44 +164,80 @@ class DispersionModel:
 		disorder_tuned: bool = True,
 	) -> np.ndarray:
 		"""
-		Lower polariton dispersion from the 2×2 exciton-photon eigenvalue problem.
+		Lower polariton dispersion from the 2×2 exciton-photon eigenvalue
+		problem, with branches assigned by eigenvalue continuity.
+
+		Algorithm
+		---------
+		1. Build the 2×2 Hamiltonian H(k) = [[E_ex, Ω/2], [Ω/2, E_ph]]
+		   for every requested k (sorted ascending; k=0 prepended as an
+		   anchor if not already in the input).
+		2. At the anchor k=0 the LP is the eigenvalue with the smaller real
+		   part; on a real-part tie (over-damped regime) the more-negative
+		   imaginary part wins.
+		3. For each subsequent k the LP is the eigenvalue whose complex
+		   distance to the previous-k LP eigenvalue is smaller.
 
 		Parameters
 		----------
 		disorder_tuned : if True, cavity is tuned to Re[E_ex(0,eta)];
 						if False, cavity is tuned to E_ex(0, 0) (disorder-free)
 		"""
-		k    = np.asarray(k_nat, dtype=float)
-		Eex  = np.asarray(self.E_ex(k, eta),    dtype=complex)
-		Eph  = (
-			np.asarray(self.E_ph(k, eta),        dtype=complex)
-			if disorder_tuned
-			else np.asarray(self.E_ph_untuned(k), dtype=complex)
+		k_in     = np.asarray(k_nat, dtype=float)
+		in_shape = k_in.shape
+		k_flat   = k_in.reshape(-1)
+
+		# Sort ascending and prepend a k=0 anchor if not present.
+		order        = np.argsort(k_flat, kind="stable")
+		k_sorted     = k_flat[order]
+		anchor_added = False
+		if k_sorted.size == 0 or k_sorted[0] > 0.0:
+			k_solve      = np.concatenate(([0.0], k_sorted))
+			anchor_added = True
+		else:
+			k_solve = k_sorted
+
+		Eex = np.asarray(self.E_ex(k_solve, eta), dtype=complex)
+		Eph = np.asarray(
+			self.E_ph(k_solve, eta) if disorder_tuned
+			else self.E_ph_untuned(k_solve),
+			dtype=complex,
 		)
 		# Params.Omega is the Rabi splitting (LP-UP gap at resonance), so the
 		# off-diagonal coupling in the 2x2 exciton-photon block is Omega/2.
 		g = 0.5 * self.p.Omega
 
-		# Closed-form roots of the 2x2 [[Eex, g],[g, Eph]] block:
-		#     E_+/- = (Eex + Eph)/2 +/- sqrt(((Eex - Eph)/2)^2 + g^2)
-		# Lower polariton is the root with the smaller real part (under-damped)
-		# or the more-negative imaginary part (over-damped tie-break). Selecting
-		# explicitly between (hs - disc) and (hs + disc) avoids sqrt branch-cut
-		# jumps in over-damped regions where Im[disc^2] flips sign due to
-		# floating-point noise (e.g. exactly at k=0 with complex Eex, real Eph).
-		half_sum  = 0.5 * (Eex + Eph)
-		half_diff = 0.5 * (Eex - Eph)
-		disc      = np.sqrt(half_diff * half_diff + g * g)
-		minus     = half_sum - disc
-		plus      = half_sum + disc
-		# Tolerance for treating Re[minus] and Re[plus] as equal (the over-
-		# damped regime where the two polaritons share a real part). Scale by
-		# the natural energy scale of the problem to be FP-robust.
+		# Stacked 2x2 Hamiltonians, shape (N, 2, 2).
+		N         = k_solve.size
+		H         = np.empty((N, 2, 2), dtype=complex)
+		H[:, 0, 0] = Eex
+		H[:, 0, 1] = g
+		H[:, 1, 0] = g
+		H[:, 1, 1] = Eph
+		evals, _  = np.linalg.eig(H)  # shape (N, 2)
+
+		# Anchor at k=0: smaller real part, more-negative imag on tie.
 		scale     = max(abs(g), 1.0)
-		real_diff = (minus.real - plus.real) / scale
-		swap = np.where(
-			np.abs(real_diff) > 1e-10,
-			real_diff > 0,
-			minus.imag > plus.imag,
-		)
-		return np.where(swap, plus, minus)
+		real_diff = (evals[0, 0].real - evals[0, 1].real) / scale
+		if abs(real_diff) > 1e-10:
+			lp_idx0 = 0 if real_diff < 0 else 1
+		else:
+			lp_idx0 = 0 if evals[0, 0].imag <= evals[0, 1].imag else 1
+
+		lp_vals     = np.empty(N, dtype=complex)
+		lp_vals[0]  = evals[0, lp_idx0]
+		prev        = lp_vals[0]
+		# Branch tracking: pick the eigenvalue closest (in the complex
+		# plane) to the previous LP eigenvalue.
+		for i in range(1, N):
+			d0 = abs(evals[i, 0] - prev)
+			d1 = abs(evals[i, 1] - prev)
+			lp_vals[i] = evals[i, 0] if d0 <= d1 else evals[i, 1]
+			prev       = lp_vals[i]
+
+		# Drop the prepended anchor (if any) and undo the sort.
+		if anchor_added:
+			lp_vals = lp_vals[1:]
+		out_flat = np.empty_like(lp_vals)
+		out_flat[order] = lp_vals
+		return out_flat.reshape(in_shape)

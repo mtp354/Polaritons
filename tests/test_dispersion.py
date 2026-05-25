@@ -222,33 +222,33 @@ class TestELPAnalyticAgreesWithEigvals:
 			np.testing.assert_allclose(got, expected, rtol=1e-12, atol=1e-12)
 
 	def test_matches_eigvals_complex_Q(self, params_nat, q_grid_nat, eta_grid):
-		# Complex Q -> complex Eex; LP is the eigenvalue with the lower real
-		# part (under-damped) or the more-negative imaginary part (over-damped).
+		# Complex Q -> complex Eex. Branch-tracked LP must equal one of the
+		# two H eigenvalues at every k, and consecutive jumps |dE_LP| must
+		# be smaller than the gap to the other branch (continuity).
 		rng = np.random.default_rng(1)
 		Q = (rng.normal(size=(len(eta_grid), len(q_grid_nat)))
 		     + 1j * rng.normal(size=(len(eta_grid), len(q_grid_nat))))
 		model = DispersionModel(params_nat, q_grid_nat, eta_grid, Q.astype(complex))
 
-		k_arr = model.q_grid_nat[1:]
+		k_arr = model.q_grid_nat
 		for eta in eta_grid:
 			Eex = np.asarray(model.E_ex(k_arr, eta), dtype=complex)
 			Eph = np.asarray(model.E_ph(k_arr, eta), dtype=complex)
 			g = 0.5 * model.p.Omega
 			got = model.E_LP(k_arr, eta)
+			other = np.empty_like(got)
 			for i in range(len(k_arr)):
 				vals = np.linalg.eigvals(
 					np.array([[Eex[i], g], [g, Eph[i]]], dtype=complex)
 				)
-				# E_LP must match one of the two eigenvalues to high precision.
 				diffs = np.abs(vals - got[i])
 				assert diffs.min() < 1e-10, (vals, got[i])
-				# And it must be the lower-real-part root (with a small
-				# imaginary tie-break: more-negative imag for the LP).
-				other = vals[1 - int(np.argmin(diffs))]
-				if abs(other.real - got[i].real) > 1e-10:
-					assert got[i].real <= other.real + 1e-12
-				else:
-					assert got[i].imag <= other.imag + 1e-12
+				other[i] = vals[1 - int(np.argmin(diffs))]
+			# Continuity: consecutive LP jump must be no larger than the
+			# gap to the other branch at the new k (within FP tolerance).
+			jumps = np.abs(np.diff(got))
+			gap   = np.abs(other[1:] - got[1:])
+			assert np.all(jumps <= gap + 1e-10)
 
 	def test_complex_Q_branch_continuous_through_zero(self, params_nat, eta_grid):
 		# Regression: at k=0 with complex Eex but real Eph (tuned cavity),

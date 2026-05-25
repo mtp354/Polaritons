@@ -161,25 +161,35 @@ def chemical_potential(
 
 
 def hopfield_coefficients(
-	model     : DispersionModel,
-	eta       : float,
-	k_grid    : np.ndarray,
-	E_lp_vals : np.ndarray,
+	model          : DispersionModel,
+	eta            : float,
+	k_grid         : np.ndarray,
+	*,
+	disorder_tuned : bool = True,
 ) -> tuple[np.ndarray, np.ndarray]:
 	"""
-	Hopfield exciton (X_LP) and photon (C_LP) fractions.
+	Hopfield exciton (X_LP) and photon (C_LP) fractions, from the
+	analytic identity
+
+	    |X_LP(k)|^2 = (Omega/2)^2 / ( (Omega/2)^2 + |E_LP(k) - E_ex(k)|^2 ),
+
+	with |C_LP|^2 = 1 - |X_LP|^2.  The lower-polariton dispersion is
+	obtained from `model.E_LP`, which assigns branches by eigenvalue
+	continuity.
 
 	Returns
 	-------
-	X_LP : exciton fraction (complex array, same shape as k_grid)
-	C_LP : photon fraction  (complex array)
+	X_LP : exciton fraction (real array, same shape as k_grid)
+	C_LP : photon fraction  (real array)
 	"""
+	E_lp_vals = model.E_LP(k_grid, eta, disorder_tuned=disorder_tuned)
 	E_ex_vals = model.E_ex(k_grid, eta)
 	# Off-diagonal coupling in the 2x2 block is Omega/2 (Omega = Rabi splitting).
-	ratio     = (E_lp_vals - E_ex_vals) / (0.5 * model.p.Omega)
-	X_LP = 1.0 / np.sqrt(1.0 + np.abs(ratio)**2)
-	C_LP = ratio / np.sqrt(1.0 + np.abs(ratio)**2)
-	return X_LP, C_LP
+	g2 = (0.5 * float(np.real(model.p.Omega)))**2
+	denom = g2 + np.abs(E_lp_vals - E_ex_vals)**2
+	X2    = g2 / denom
+	C2    = np.clip(1.0 - X2, 0.0, 1.0)
+	return np.sqrt(X2), np.sqrt(C2)
 
 
 def Pi0(
@@ -250,9 +260,8 @@ def polariton_interaction_strength(
 	"""
 	p        = model.p
 	beta     = beta if beta is not None else p.beta
-	E_lp     = model.E_LP(k_grid, eta, disorder_tuned=disorder_tuned)
-	X_LP, _  = hopfield_coefficients(model, eta, k_grid, E_lp)
-	g_bare   = (p.g_ex / p.N_qw) * np.abs(X_LP)**4
+	X_LP, _  = hopfield_coefficients(model, eta, k_grid, disorder_tuned=disorder_tuned)
+	g_bare   = (p.g_ex / p.N_qw) * X_LP**4
 
 	bubble_value = (
 		Pi0(model, eta, beta=beta, L_terms=L_terms,

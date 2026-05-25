@@ -29,8 +29,7 @@ class TestHopfieldCoefficients:
 		"""
 		k_arr   = simple_model.q_grid_nat[1:8]
 		for eta in eta_grid:
-			E_lp = simple_model.E_LP(k_arr, eta)
-			X, C = hopfield_coefficients(simple_model, eta, k_arr, E_lp)
+			X, C = hopfield_coefficients(simple_model, eta, k_arr)
 			norm_sq = np.abs(X)**2 + np.abs(C)**2
 			np.testing.assert_allclose(norm_sq, 1.0, atol=1e-10)
 
@@ -41,15 +40,13 @@ class TestHopfieldCoefficients:
 		"""
 		for eta in eta_grid:
 			k_arr = simple_model.q_grid_nat[:1]   # k=0
-			E_lp  = simple_model.E_LP(k_arr, eta)
-			X, C  = hopfield_coefficients(simple_model, eta, k_arr, E_lp)
+			X, C  = hopfield_coefficients(simple_model, eta, k_arr)
 			assert np.abs(X[0])**2 == pytest.approx(0.5, abs=1e-6)
 			assert np.abs(C[0])**2 == pytest.approx(0.5, abs=1e-6)
 
 	def test_output_shapes(self, simple_model, eta_grid):
 		k_arr = simple_model.q_grid_nat[1:7]
-		E_lp  = simple_model.E_LP(k_arr, 0.0)
-		X, C  = hopfield_coefficients(simple_model, 0.0, k_arr, E_lp)
+		X, C  = hopfield_coefficients(simple_model, 0.0, k_arr)
 		assert X.shape == k_arr.shape
 		assert C.shape == k_arr.shape
 
