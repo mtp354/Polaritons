@@ -181,6 +181,64 @@ class DispersionModel:
 		E_0_abs       = E_band_bottom + float(np.real(self.E_ex(0.0, 0.0)))
 		return np.sqrt((p.hbar * p.c * k / p.n_refr)**2 + E_0_abs**2) - E_band_bottom
 
+	def _lp_anchor_at_k0(
+		self,
+		eta_target    : float,
+		disorder_tuned: bool,
+		n_eta_steps   : int = 32,
+	) -> complex:
+		"""
+		LP eigenvalue at ``k=0`` for the requested ``eta_target``, obtained
+		by **adiabatic continuation in eta** from the clean limit.
+
+		Strategy
+		--------
+		At ``eta=0`` (Q=0) the 2x2 polariton Hamiltonian is Hermitian and
+		the LP is unambiguous:
+
+		    λ_LP(η=0, k=0) = E_ph(0,0)/2 − sqrt((E_ph(0,0)/2)² + (Ω/2)²)
+
+		(in the band-bottom-relative convention with ``E_ex(0,0)=0`` this
+		is simply ``−Ω/2``).  For finite ``eta_target`` we walk along a
+		dense eta path ``[0, eta_target]`` and at each step pick the
+		eigenvalue closest to the previous-step LP.  This gives the unique
+		analytic continuation of the LP across the exceptional point
+		``|Im[E_ex]| = Ω`` where naive "smaller real part" picking fails.
+
+		The walk is cheap (one 2x2 eig per step) and used only at k=0.
+		"""
+		p = self.p
+		g = 0.5 * p.Omega
+
+		# Cavity at k=0 in the relevant tuning convention.
+		Eph0_tuned = lambda η: float(np.real(self.E_ex(0.0, η))) if disorder_tuned else 0.0
+		# (E_ph_untuned(0) == 0 in BBR since E_ex(0, 0) == 0.)
+
+		# Exact clean LP at eta=0.
+		Eph0_clean = Eph0_tuned(0.0)
+		lam_prev   = 0.5 * Eph0_clean - np.sqrt((0.5 * Eph0_clean)**2 + g**2 + 0j)
+
+		if eta_target == 0.0:
+			return complex(lam_prev)
+
+		# Dense eta path; n_eta_steps + 1 points including endpoints.
+		n_steps = max(int(n_eta_steps), 1)
+		eta_path = np.linspace(0.0, float(eta_target), n_steps + 1)
+
+		for η in eta_path[1:]:
+			Eex0 = complex(self.E_ex(0.0, float(η)))
+			Eph0 = complex(Eph0_tuned(float(η)))
+			# Closed-form 2x2 eigenvalues.
+			half_sum  = 0.5 * (Eex0 + Eph0)
+			half_diff = 0.5 * (Eex0 - Eph0)
+			disc      = np.sqrt(half_diff * half_diff + g * g)
+			cand0     = half_sum + disc
+			cand1     = half_sum - disc
+			# Nearest-to-previous LP.
+			lam_prev  = cand0 if abs(cand0 - lam_prev) <= abs(cand1 - lam_prev) else cand1
+
+		return complex(lam_prev)
+
 	def E_LP(
 		self,
 		k_nat         : np.ndarray,
@@ -196,9 +254,11 @@ class DispersionModel:
 		1. Build the 2×2 Hamiltonian H(k) = [[E_ex, Ω/2], [Ω/2, E_ph]]
 		   for every requested k (sorted ascending; k=0 prepended as an
 		   anchor if not already in the input).
-		2. At the anchor k=0 the LP is the eigenvalue with the smaller real
-		   part; on a real-part tie (over-damped regime) the more-negative
-		   imaginary part wins.
+		2. At the anchor k=0 the LP is the eigenvalue obtained by
+		   **adiabatic continuation in eta from the clean limit** — see
+		   ``_lp_anchor_at_k0``.  This is correct even past the
+		   exceptional point ``|Im[E_ex]| ≈ Ω`` where naive "smaller
+		   real part" picking selects an unphysical branch.
 		3. For each subsequent k the LP is the eigenvalue whose complex
 		   distance to the previous-k LP eigenvalue is smaller.
 
@@ -240,13 +300,11 @@ class DispersionModel:
 		H[:, 1, 1] = Eph
 		evals, _  = np.linalg.eig(H)  # shape (N, 2)
 
-		# Anchor at k=0: smaller real part, more-negative imag on tie.
-		scale     = max(abs(g), 1.0)
-		real_diff = (evals[0, 0].real - evals[0, 1].real) / scale
-		if abs(real_diff) > 1e-10:
-			lp_idx0 = 0 if real_diff < 0 else 1
-		else:
-			lp_idx0 = 0 if evals[0, 0].imag <= evals[0, 1].imag else 1
+		# Anchor at k=0 by adiabatic continuation in eta from Q=0.
+		lam_anchor = self._lp_anchor_at_k0(float(eta), disorder_tuned)
+		d0 = abs(evals[0, 0] - lam_anchor)
+		d1 = abs(evals[0, 1] - lam_anchor)
+		lp_idx0 = 0 if d0 <= d1 else 1
 
 		lp_vals     = np.empty(N, dtype=complex)
 		lp_vals[0]  = evals[0, lp_idx0]

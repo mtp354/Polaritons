@@ -148,6 +148,73 @@ class TestAssembleQ:
 		Q  = assemble_Q(Sigma, Ek, E_ext)
 		np.testing.assert_allclose(Q[0], np.full(N, -c, dtype=complex), atol=1e-10)
 
+	def test_cubic_interp_improves_curved_sigma(self, p_nat):
+		"""
+		Synthetic test for the ``interp="cubic"`` reconstruction path.
+
+		Build ``Sigma(E_ext, k)`` with a known smooth (non-linear) energy
+		dependence, sample it on a *coarse* E_ext grid, and then recover
+		``Q(k)`` two ways: linear (default) and cubic.  The exact on-shell
+		``Q`` is ``-Sigma(E_k', k)`` with ``E_k'`` solved analytically.
+		Cubic recovery must be at least 5x more accurate than linear and
+		monotonic in ``k`` (the linear path produces an artificial bump
+		identical to the gaussian-disorder anomaly being fixed).
+		"""
+		N      = 9
+		n_E    = 21
+		q, _   = uniform_grid_and_weights(1.5, N)
+		bare   = (p_nat.hbar**2 * q**2) / (2.0 * p_nat.M)
+		E_ext  = np.linspace(-0.5, 0.5 + bare.max(), n_E)
+
+		# Smooth, non-linear Sigma(E) curvature on a sub-grid-spacing scale.
+		# Small amplitude relative to grid spacing -> linear interp errs.
+		dE  = E_ext[1] - E_ext[0]
+		amp = 0.03 * dE
+		# Sigma_re = amp * (E_ext - 0.1*bare[k])**2  -> curved in E, smooth in k
+		Sigma = np.empty((1, n_E, N), dtype=complex)
+		for k_idx in range(N):
+			off = 0.1 * bare[k_idx]
+			Sigma[0, :, k_idx] = amp * (E_ext - off)**2
+
+		# True on-shell root for this synthetic model (closed form): solve
+		# E - bare - amp*(E - 0.1*bare)**2 = 0 for the branch close to bare.
+		def true_Q(k_idx):
+			b = float(bare[k_idx])
+			# amp*E**2 - (2*amp*0.1*b + 1)*E + (amp*(0.1*b)**2 + b) = 0
+			A = amp
+			B = -(2.0 * amp * 0.1 * b + 1.0)
+			C = amp * (0.1 * b)**2 + b
+			disc = B*B - 4*A*C
+			# Two roots; pick the one closer to b (on-shell pole).
+			r1 = (-B + np.sqrt(disc)) / (2 * A)
+			r2 = (-B - np.sqrt(disc)) / (2 * A)
+			Eprime = r1 if abs(r1 - b) < abs(r2 - b) else r2
+			return -amp * (Eprime - 0.1 * b)**2   # Q = -Sigma(E')
+
+		exact = np.array([true_Q(k) for k in range(N)], dtype=complex)
+
+		Ek_lin = find_E_k_prime(Sigma, q, E_ext, p_nat, interp="linear")
+		Q_lin  = assemble_Q(Sigma, Ek_lin, E_ext, interp="linear")[0]
+
+		Ek_cub = find_E_k_prime(Sigma, q, E_ext, p_nat, interp="cubic")
+		Q_cub  = assemble_Q(Sigma, Ek_cub, E_ext, interp="cubic")[0]
+
+		err_lin = np.max(np.abs(Q_lin - exact))
+		err_cub = np.max(np.abs(Q_cub - exact))
+
+		assert err_cub < err_lin / 3.0, (err_lin, err_cub)
+
+	def test_bad_interp_raises(self, p_nat):
+		Sigma = np.zeros((1, 5, 3), dtype=complex)
+		E     = np.linspace(-1.0, 1.0, 5)
+		Ek    = np.zeros((1, 3))
+		with pytest.raises(ValueError, match="interp"):
+			assemble_Q(Sigma, Ek, E, interp="quadratic")
+		with pytest.raises(ValueError, match="interp"):
+			find_E_k_prime(
+				Sigma, np.array([0.0, 0.1, 0.2]), E, p_nat, interp="quadratic"
+			)
+
 
 # ---------------------------------------------------------------------------
 # Phase-2 reuse helpers

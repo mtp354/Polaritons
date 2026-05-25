@@ -24,10 +24,29 @@ from functools import partial
 from typing import Callable
 
 import numpy as np
+from scipy.interpolate import PchipInterpolator
 from scipy.optimize import brentq
 
 from .parameters import Params
 from .solver import picard_iteration
+
+
+# ---------------------------------------------------------------------------
+# Interpolation helpers (linear / cubic) for on-shell Sigma reconstruction.
+# ---------------------------------------------------------------------------
+
+def _interp_window(j: int, n_E: int, width: int = 4) -> tuple[int, int]:
+	"""
+	Return ``(lo, hi)`` such that ``[lo, hi]`` is a ``width``-point window
+	on a length-``n_E`` grid that contains the bracket ``[j, j+1]`` and
+	stays inside ``[0, n_E-1]``.  ``hi`` is exclusive in slicing terms.
+	"""
+	if n_E < 2:
+		raise ValueError("Need at least 2 E_ext points")
+	w  = min(width, n_E)
+	lo = j - (w - 2) // 2
+	lo = max(0, min(lo, n_E - w))
+	return lo, lo + w
 
 
 def sweep_sigma(
@@ -197,6 +216,7 @@ def find_E_k_prime(
 	q          : np.ndarray,
 	E_ext_grid : np.ndarray,
 	p          : Params,
+	interp     : str = "linear",
 ) -> np.ndarray:
 	"""
 	On-shell external energy E_k'(eta, k) where the real part of the
@@ -205,9 +225,18 @@ def find_E_k_prime(
 	    f(E_ext) = E_ext - hbar^2 k^2 / (2 M) - Re[Sigma(k, E_ext)] = 0
 
 	The first sign change of ``f`` along the E_ext grid is bracketed and
-	then refined with ``scipy.optimize.brentq`` on a linear interpolation
-	of ``Sigma.real`` between the bracketing grid points. If no sign
-	change occurs anywhere on the grid, the entry is set to NaN.
+	then refined with ``scipy.optimize.brentq``.  Between the bracketing
+	grid samples ``Re[Sigma]`` is reconstructed via either:
+
+	- ``interp="linear"`` (default): straight segment between the two
+	  bracketing grid samples;
+	- ``interp="cubic"``: a monotone PCHIP fit over a 4-point window
+	  spanning the bracket plus one neighbour on each side (clipped to
+	  the grid).  This recovers ``E_k'`` more accurately when ``Re[Sigma]``
+	  is small relative to the grid spacing, which is the regime where
+	  linear segmentation produces an artificial bump in ``Q(k)``.
+
+	If no sign change occurs anywhere on the grid the entry is set to NaN.
 
 	The bare-band reference is ``hbar^2 k^2 / (2 M)``, i.e. the clean
 	exciton dispersion measured from the band bottom (no semiconductor
@@ -220,11 +249,15 @@ def find_E_k_prime(
 	q          : momentum grid, length N
 	E_ext_grid : external energy grid, length n_E (strictly increasing)
 	p          : natural-unit Params (uses p.hbar, p.M)
+	interp     : ``"linear"`` (default) or ``"cubic"``.
 
 	Returns
 	-------
 	E_k_prime  : float array of shape (n_eta, N), NaN where no root.
 	"""
+	if interp not in ("linear", "cubic"):
+		raise ValueError(f"interp must be 'linear' or 'cubic'; got {interp!r}")
+
 	n_eta, n_E, N = Sigma_arr.shape
 	if len(E_ext_grid) != n_E:
 		raise ValueError("E_ext_grid length must equal Sigma_arr.shape[1]")
@@ -258,11 +291,22 @@ def find_E_k_prime(
 			s1 = float(Sig_re_all[j + 1, k_idx])
 			b  = float(bare[k_idx])
 
-			def _f(E_val, _s0=s0, _s1=s1, _E0=E0, _E1=E1, _b=b):
-				# Linear interpolation of Re[Sigma] between (E0, s0) and (E1, s1).
-				t = (E_val - _E0) / (_E1 - _E0)
-				sig = _s0 + t * (_s1 - _s0)
-				return E_val - _b - sig
+			if interp == "cubic" and n_E >= 4:
+				lo, hi = _interp_window(j, n_E, width=4)
+				pchip = PchipInterpolator(
+					E[lo:hi],
+					Sig_re_all[lo:hi, k_idx],
+					extrapolate=False,
+				)
+
+				def _f(E_val, _pchip=pchip, _b=b):
+					return float(E_val - _b - _pchip(E_val))
+			else:
+				def _f(E_val, _s0=s0, _s1=s1, _E0=E0, _E1=E1, _b=b):
+					# Linear interpolation of Re[Sigma] between (E0, s0) and (E1, s1).
+					t = (E_val - _E0) / (_E1 - _E0)
+					sig = _s0 + t * (_s1 - _s0)
+					return E_val - _b - sig
 
 			f0, f1 = _f(E0), _f(E1)
 			if f0 == 0.0:
@@ -287,24 +331,37 @@ def assemble_Q(
 	Sigma_arr  : np.ndarray,
 	E_k_prime  : np.ndarray,
 	E_ext_grid : np.ndarray,
+	interp     : str = "linear",
 ) -> np.ndarray:
 	"""
 	On-shell self-energy ``Q(k, eta) = -Sigma(k, E_k'(eta, k))``.
 
-	Sigma is linearly interpolated along the E_ext axis at the per-(eta, k)
-	root ``E_k_prime``. Where ``E_k_prime`` is NaN the corresponding entry
-	of the output is also NaN.
+	Sigma is interpolated along the E_ext axis at the per-(eta, k) root
+	``E_k_prime`` using either:
+
+	- ``interp="linear"`` (default): linear interpolation between the two
+	  bracketing E_ext samples;
+	- ``interp="cubic"``: monotone PCHIP on a 4-point window spanning the
+	  bracket and one neighbour on each side (clipped to grid bounds).
+	  Real and imaginary parts of ``Sigma`` are interpolated separately.
+
+	Where ``E_k_prime`` is NaN the corresponding entry of the output is
+	also NaN.
 
 	Parameters
 	----------
 	Sigma_arr  : (n_eta, n_E, N) complex array from ``sweep_sigma``
 	E_k_prime  : (n_eta, N) float array from ``find_E_k_prime``
 	E_ext_grid : monotone array of length n_E
+	interp     : ``"linear"`` (default) or ``"cubic"``.
 
 	Returns
 	-------
 	Q_arr      : (n_eta, N) complex array
 	"""
+	if interp not in ("linear", "cubic"):
+		raise ValueError(f"interp must be 'linear' or 'cubic'; got {interp!r}")
+
 	n_eta, n_E, N = Sigma_arr.shape
 	E = np.asarray(E_ext_grid, dtype=float)
 	if E.shape != (n_E,):
@@ -321,16 +378,30 @@ def assemble_Q(
 		valid = np.isfinite(Ek)
 		if not valid.any():
 			continue
+
 		# Bracketing index for each valid k.
 		idx = np.searchsorted(E, Ek[valid]) - 1
 		idx = np.clip(idx, 0, n_E - 2)
-		E0  = E[idx]
-		E1  = E[idx + 1]
-		t   = (Ek[valid] - E0) / (E1 - E0)
 		k_valid = np.flatnonzero(valid)
-		S0 = Sigma_arr[ei, idx,     k_valid]
-		S1 = Sigma_arr[ei, idx + 1, k_valid]
-		Sigma_on = (1.0 - t) * S0 + t * S1
+
+		if interp == "linear" or n_E < 4:
+			E0  = E[idx]
+			E1  = E[idx + 1]
+			t   = (Ek[valid] - E0) / (E1 - E0)
+			S0 = Sigma_arr[ei, idx,     k_valid]
+			S1 = Sigma_arr[ei, idx + 1, k_valid]
+			Sigma_on = (1.0 - t) * S0 + t * S1
+		else:
+			Sigma_on = np.empty(k_valid.size, dtype=complex)
+			Sig_slice = Sigma_arr[ei]               # (n_E, N)
+			for m, k_idx in enumerate(k_valid):
+				j = int(idx[m])
+				lo, hi = _interp_window(j, n_E, width=4)
+				col = Sig_slice[lo:hi, k_idx]
+				re = PchipInterpolator(E[lo:hi], col.real, extrapolate=False)
+				im = PchipInterpolator(E[lo:hi], col.imag, extrapolate=False)
+				Sigma_on[m] = float(re(Ek[k_idx])) + 1j * float(im(Ek[k_idx]))
+
 		Q_arr[ei, k_valid] = -Sigma_on
 
 	return Q_arr

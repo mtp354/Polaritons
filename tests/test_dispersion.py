@@ -287,3 +287,52 @@ class TestELPAnalyticAgreesWithEigvals:
 			# LP must be continuous across k=0: every point close to k=0 value.
 			np.testing.assert_allclose(Elp.real, Elp[0].real, atol=1e-6)
 			np.testing.assert_allclose(Elp.imag, Elp[0].imag, atol=1e-6)
+
+	def test_E_LP_past_EP_continuous_in_eta(self, params_nat):
+		"""
+		Regression for non-Gaussian-like over-damped case: at k=0 with
+		``|Im[E_ex]|`` ranging from below to above ``Omega``, ``E_LP`` must
+		remain continuous in ``eta`` and stay below the clean LP in real
+		part (since ``Re[Q] > 0`` shifts the exciton -- and the LP --
+		downward).  Naive "smaller-real-part" anchor selection picks the
+		wrong branch past the exceptional point ``|Im[E_ex]| = Omega``.
+		"""
+		# Dense eta grid so DispersionModel can interpolate Q smoothly.
+		eta_grid = np.linspace(0.0, 2.0, 21)
+		q_grid   = np.linspace(0.0, 1.0, 8)
+
+		# Q(0, eta) chosen so |Im[E_ex(0, eta)]| sweeps across Omega.
+		# In BBR convention E_ex = bare - Q, so Re[Q] > 0 -> Re[E_ex] < 0
+		# (LP shifts down) and Im[Q] > 0 -> Im[E_ex] < 0 (damped).
+		Omega = float(params_nat.Omega)
+		Q     = np.zeros((len(eta_grid), len(q_grid)), dtype=complex)
+		for ei, eta in enumerate(eta_grid):
+			# Linear in eta: Im[Q] crosses Omega at eta=1.0.
+			Q[ei, :] = (0.3 * eta * Omega) + 1j * (1.4 * eta * Omega)
+		model = DispersionModel(params_nat, q_grid, eta_grid, Q)
+
+		# LP at k=0 for every eta, in both cavity-tuning conventions.
+		k0 = np.array([0.0])
+		lp_tuned   = np.array([complex(model.E_LP(k0, float(e), disorder_tuned=True)[0])
+		                       for e in eta_grid])
+		lp_free    = np.array([complex(model.E_LP(k0, float(e), disorder_tuned=False)[0])
+		                       for e in eta_grid])
+		lp_clean   = lp_tuned[0]  # eta=0 value, exact analytic LP = -Omega/2
+
+		# Continuity: consecutive jump bounded by 0.5*Omega (gentle along
+		# the chosen eta path; would diverge if branches flipped at EP).
+		for series in (lp_tuned, lp_free):
+			jumps = np.abs(np.diff(series))
+			assert np.all(jumps < 0.5 * Omega), (
+				"LP discontinuity in eta indicates an EP branch flip"
+			)
+
+		# Final LP real part must lie strictly below the clean LP
+		# (Re[Q(0, eta_max)] > 0 -> LP shifts down past the EP).
+		assert lp_tuned.real[-1] < lp_clean.real
+		assert lp_free.real[-1]  < lp_clean.real
+
+		# LP must be damped (Im <= 0) for every eta > 0; a positive
+		# imaginary part would indicate the unphysical gainy branch.
+		assert np.all(lp_tuned.imag <= 1e-12)
+		assert np.all(lp_free.imag  <= 1e-12)
