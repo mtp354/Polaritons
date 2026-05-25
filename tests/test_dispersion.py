@@ -98,12 +98,12 @@ class TestEEx:
 
 class TestEPh:
 	def test_tuned_cavity_at_k0(self, simple_model, eta_grid):
-		"""E_ph(0, eta) must equal E_ex(0, eta) by construction (complex)."""
+		"""E_ph(0, eta) must equal Re[E_ex(0, eta)] by construction (real)."""
 		for eta in eta_grid:
 			E_ex_0 = complex(simple_model.E_ex(0.0, eta))
 			E_ph_0 = complex(simple_model.E_ph(0.0, eta))
 			assert E_ph_0.real == pytest.approx(E_ex_0.real, rel=1e-6, abs=1e-12)
-			assert E_ph_0.imag == pytest.approx(E_ex_0.imag, rel=1e-6, abs=1e-12)
+			assert E_ph_0.imag == pytest.approx(0.0, abs=1e-12)
 
 	def test_E_ph_increases_with_k(self, simple_model):
 		"""Photon dispersion is dispersive (Re part increases with |k|)."""
