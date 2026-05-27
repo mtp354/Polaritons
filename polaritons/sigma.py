@@ -408,6 +408,148 @@ def assemble_Q(
 
 
 # ---------------------------------------------------------------------------
+# Spectral-function exciton dispersion
+# ---------------------------------------------------------------------------
+
+def assemble_E_ex_spectral(
+	Sigma_arr  : np.ndarray,
+	q          : np.ndarray,
+	E_ext_grid : np.ndarray,
+	p          : Params,
+	*,
+	eta_grid   : np.ndarray | None = None,
+	refine     : bool = True,
+) -> tuple[np.ndarray, np.ndarray]:
+	"""
+	Real and imaginary exciton dispersion from the spectral function.
+
+	For each ``(eta, k)`` the retarded spectral function is
+
+	    A(k, E) = -(1/π) Im Σ(k, E)
+	              / [(E - ε_k - Re Σ(k, E))² + (Im Σ(k, E))²]
+
+	with ε_k = ħ² k² / (2 M) the bare exciton dispersion (band-bottom
+	relative).
+
+	- ``Re[E_ex(k)]`` is the ``E`` that maximises ``A(k, ·)``.  The
+	  discrete argmax over ``E_ext_grid`` is bracketed and (if
+	  ``refine=True`` and the bracket is interior) refined with a
+	  bounded Brent search over monotone PCHIP interpolants of ``Re Σ``
+	  and ``Im Σ``.
+	- ``Im[E_ex(k)]`` is taken as ``Z(k) · Im Σ(k, E*)`` where
+	  ``Z(k) = 1 / (1 - ∂ Re Σ/∂E |_{E*})`` is the quasiparticle
+	  residue.  This is the (signed) HWHM of the Lorentzian obtained by
+	  linearising the inverse Green's function about the peak; with the
+	  retarded convention ``Im Σ ≤ 0`` it gives ``Im[E_ex] ≤ 0``
+	  (decaying excitations).
+
+	``eta = 0`` rows (Σ ≡ 0) short-circuit to ``E_ex = ε_k``, ``Z = 1``.
+
+	Parameters
+	----------
+	Sigma_arr   : (n_eta, n_E, N) complex Σ from ``sweep_sigma``
+	q           : momentum grid, length N
+	E_ext_grid  : external-energy grid, length n_E (strictly increasing)
+	p           : natural-unit Params (uses ``p.hbar``, ``p.M``)
+	eta_grid    : optional (n_eta,) array; used only to detect and
+	              short-circuit ``eta = 0`` rows.
+	refine      : if True, Brent-refine the peak inside the bracketing
+	              triple ``[E_{j*-1}, E_{j*}, E_{j*+1}]`` when ``j*`` is
+	              an interior grid index.
+
+	Returns
+	-------
+	E_ex_arr : (n_eta, N) complex; real part = peak energy, imaginary
+	           part = Z · Im Σ at the peak (negative for decay).
+	Z_arr    : (n_eta, N) float; quasiparticle residue at the peak.
+	"""
+	from scipy.optimize import minimize_scalar
+
+	Sigma_arr = np.asarray(Sigma_arr, dtype=complex)
+	q         = np.asarray(q, dtype=float)
+	E         = np.asarray(E_ext_grid, dtype=float)
+
+	if Sigma_arr.ndim != 3:
+		raise ValueError("Sigma_arr must be 3-D (n_eta, n_E, N)")
+	n_eta, n_E, N = Sigma_arr.shape
+	if E.shape != (n_E,):
+		raise ValueError("E_ext_grid length must equal Sigma_arr.shape[1]")
+	if q.shape != (N,):
+		raise ValueError("q length must equal Sigma_arr.shape[2]")
+	if not np.all(np.diff(E) > 0):
+		raise ValueError("E_ext_grid must be strictly increasing")
+
+	if eta_grid is not None:
+		eta_grid = np.asarray(eta_grid, dtype=float)
+		if eta_grid.shape != (n_eta,):
+			raise ValueError("eta_grid length must equal Sigma_arr.shape[0]")
+
+	bare = (p.hbar**2 * q**2) / (2.0 * p.M)            # (N,)
+
+	E_ex_arr = np.full((n_eta, N), np.nan + 1j * np.nan, dtype=complex)
+	Z_arr    = np.full((n_eta, N), np.nan, dtype=float)
+
+	for ei in range(n_eta):
+		# eta = 0 short-circuit: bare dispersion, no broadening.
+		if (eta_grid is not None and float(eta_grid[ei]) == 0.0) \
+				or not np.any(Sigma_arr[ei]):
+			E_ex_arr[ei, :] = bare.astype(complex)
+			Z_arr[ei, :]    = 1.0
+			continue
+
+		Sig_re_all = Sigma_arr[ei].real                # (n_E, N)
+		Sig_im_all = Sigma_arr[ei].imag                # (n_E, N)
+
+		for k_idx in range(N):
+			col_re = Sig_re_all[:, k_idx]
+			col_im = Sig_im_all[:, k_idx]
+			if not (np.all(np.isfinite(col_re)) and np.all(np.isfinite(col_im))):
+				continue
+
+			b = float(bare[k_idx])
+
+			# Discrete A on the grid; argmax gives the bracket.
+			denom_grid = (E - b - col_re) ** 2 + col_im ** 2
+			with np.errstate(divide="ignore", invalid="ignore"):
+				A_grid = np.where(denom_grid > 0.0, -col_im / denom_grid, -np.inf)
+			j_star = int(np.argmax(A_grid))
+
+			re_spline = PchipInterpolator(E, col_re, extrapolate=False)
+			im_spline = PchipInterpolator(E, col_im, extrapolate=False)
+
+			def neg_A(Ev, _re=re_spline, _im=im_spline, _b=b):
+				rS = float(_re(Ev))
+				iS = float(_im(Ev))
+				d  = (Ev - _b - rS) ** 2 + iS ** 2
+				if d == 0.0:
+					return np.inf
+				return -(-iS) / d           # minimise -A; A = -ImΣ / d
+
+			if refine and 0 < j_star < n_E - 1:
+				lo, hi = float(E[j_star - 1]), float(E[j_star + 1])
+				try:
+					res = minimize_scalar(
+						neg_A, bounds=(lo, hi), method="bounded",
+						options={"xatol": 1e-12},
+					)
+					E_star = float(res.x) if (lo <= float(res.x) <= hi) else float(E[j_star])
+				except (ValueError, RuntimeError):
+					E_star = float(E[j_star])
+			else:
+				E_star = float(E[j_star])
+
+			im_at_star = float(im_spline(E_star))
+			d_re_dE    = float(re_spline.derivative()(E_star))
+			one_minus  = 1.0 - d_re_dE
+			Z_val      = (1.0 / one_minus) if one_minus != 0.0 else np.nan
+
+			E_ex_arr[ei, k_idx] = complex(E_star, Z_val * im_at_star)
+			Z_arr[ei, k_idx]    = Z_val
+
+	return E_ex_arr, Z_arr
+
+
+# ---------------------------------------------------------------------------
 # Reuse helpers: resume / reseed / refine a previously-saved Sigma surface
 # ---------------------------------------------------------------------------
 
