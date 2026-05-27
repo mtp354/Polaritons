@@ -181,32 +181,39 @@ class DispersionModel:
 		E_0_abs       = E_band_bottom + float(np.real(self.E_ex(0.0, 0.0)))
 		return np.sqrt((p.hbar * p.c * k / p.n_refr)**2 + E_0_abs**2) - E_band_bottom
 
-	def _lp_anchor_at_k0(
+	def _branch_anchor_at_k0(
 		self,
 		eta_target    : float,
 		disorder_tuned: bool,
+		branch        : str,
 		n_eta_steps   : int = 32,
 	) -> complex:
 		"""
-		LP eigenvalue at ``k=0`` for the requested ``eta_target``, obtained
-		by **adiabatic continuation in eta** from the clean limit.
+		LP or UP eigenvalue at ``k=0`` for the requested ``eta_target``,
+		obtained by **adiabatic continuation in eta** from the clean limit.
 
 		Strategy
 		--------
 		At ``eta=0`` (Q=0) the 2x2 polariton Hamiltonian is Hermitian and
-		the LP is unambiguous:
+		the requested branch is unambiguous:
 
 		    λ_LP(η=0, k=0) = E_ph(0,0)/2 − sqrt((E_ph(0,0)/2)² + (Ω/2)²)
+		    λ_UP(η=0, k=0) = E_ph(0,0)/2 + sqrt((E_ph(0,0)/2)² + (Ω/2)²)
 
-		(in the band-bottom-relative convention with ``E_ex(0,0)=0`` this
-		is simply ``−Ω/2``).  For finite ``eta_target`` we walk along a
+		(in the band-bottom-relative convention with ``E_ex(0,0)=0`` these
+		reduce to ``∓Ω/2``).  For finite ``eta_target`` we walk along a
 		dense eta path ``[0, eta_target]`` and at each step pick the
-		eigenvalue closest to the previous-step LP.  This gives the unique
-		analytic continuation of the LP across the exceptional point
-		``|Im[E_ex]| = Ω`` where naive "smaller real part" picking fails.
+		eigenvalue closest to the previous-step value.  This gives the
+		unique analytic continuation of the chosen branch across the
+		exceptional point ``|Im[E_ex]| = Ω`` where naive "smaller/larger
+		real part" picking fails.
 
 		The walk is cheap (one 2x2 eig per step) and used only at k=0.
 		"""
+		if branch not in ("LP", "UP"):
+			raise ValueError(f"branch must be 'LP' or 'UP', got {branch!r}.")
+		sign = -1.0 if branch == "LP" else +1.0
+
 		p = self.p
 		g = 0.5 * p.Omega
 
@@ -214,9 +221,9 @@ class DispersionModel:
 		Eph0_tuned = lambda η: float(np.real(self.E_ex(0.0, η))) if disorder_tuned else 0.0
 		# (E_ph_untuned(0) == 0 in BBR since E_ex(0, 0) == 0.)
 
-		# Exact clean LP at eta=0.
+		# Exact clean branch eigenvalue at eta=0.
 		Eph0_clean = Eph0_tuned(0.0)
-		lam_prev   = 0.5 * Eph0_clean - np.sqrt((0.5 * Eph0_clean)**2 + g**2 + 0j)
+		lam_prev   = 0.5 * Eph0_clean + sign * np.sqrt((0.5 * Eph0_clean)**2 + g**2 + 0j)
 
 		if eta_target == 0.0:
 			return complex(lam_prev)
@@ -256,7 +263,7 @@ class DispersionModel:
 		   anchor if not already in the input).
 		2. At the anchor k=0 the LP is the eigenvalue obtained by
 		   **adiabatic continuation in eta from the clean limit** — see
-		   ``_lp_anchor_at_k0``.  This is correct even past the
+		   ``_branch_anchor_at_k0``.  This is correct even past the
 		   exceptional point ``|Im[E_ex]| ≈ Ω`` where naive "smaller
 		   real part" picking selects an unphysical branch.
 		3. For each subsequent k the LP is the eigenvalue whose complex
@@ -267,6 +274,30 @@ class DispersionModel:
 		disorder_tuned : if True, cavity is tuned to Re[E_ex(0,eta)];
 						if False, cavity is tuned to E_ex(0, 0) (disorder-free)
 		"""
+		return self._branch_dispersion(k_nat, eta, disorder_tuned, branch="LP")
+
+	def E_UP(
+		self,
+		k_nat         : np.ndarray,
+		eta           : float,
+		disorder_tuned: bool = True,
+	) -> np.ndarray:
+		"""
+		Upper polariton dispersion from the same 2×2 exciton-photon
+		eigenvalue problem as ``E_LP``, but anchored to the upper branch
+		at k=0 (clean-limit eigenvalue ``+Ω/2`` at resonance).  Branch
+		tracking and the disorder-tuning convention are identical to
+		``E_LP``.
+		"""
+		return self._branch_dispersion(k_nat, eta, disorder_tuned, branch="UP")
+
+	def _branch_dispersion(
+		self,
+		k_nat         : np.ndarray,
+		eta           : float,
+		disorder_tuned: bool,
+		branch        : str,
+	) -> np.ndarray:
 		k_in     = np.asarray(k_nat, dtype=float)
 		in_shape = k_in.shape
 		k_flat   = k_in.reshape(-1)
@@ -298,28 +329,40 @@ class DispersionModel:
 		H[:, 0, 1] = g
 		H[:, 1, 0] = g
 		H[:, 1, 1] = Eph
-		evals, _  = np.linalg.eig(H)  # shape (N, 2)
+		evals, evecs = np.linalg.eig(H)  # evals (N, 2), evecs (N, 2, 2)
 
-		# Anchor at k=0 by adiabatic continuation in eta from Q=0.
-		lam_anchor = self._lp_anchor_at_k0(float(eta), disorder_tuned)
+		# Anchor at k=0 by adiabatic continuation in eta from Q=0.  Pick by
+		# eigenvalue distance to the analytic anchor (eigenvalues at k=0 are
+		# well separated by ~Omega, so this is unambiguous).  Subsequent k
+		# points use eigenvector-overlap tracking, which is robust against
+		# large eigenvalue jumps between the two branches.
+		lam_anchor = self._branch_anchor_at_k0(float(eta), disorder_tuned, branch)
 		d0 = abs(evals[0, 0] - lam_anchor)
 		d1 = abs(evals[0, 1] - lam_anchor)
-		lp_idx0 = 0 if d0 <= d1 else 1
+		branch_idx0 = 0 if d0 <= d1 else 1
 
-		lp_vals     = np.empty(N, dtype=complex)
-		lp_vals[0]  = evals[0, lp_idx0]
-		prev        = lp_vals[0]
-		# Branch tracking: pick the eigenvalue closest (in the complex
-		# plane) to the previous LP eigenvalue.
+		branch_vals     = np.empty(N, dtype=complex)
+		branch_vals[0]  = evals[0, branch_idx0]
+		prev_vec        = evecs[0, :, branch_idx0]
+		# Branch tracking via right-eigenvector overlap: pick the eigenpair
+		# whose eigenvector has the largest |<v_prev | v_i>| with the
+		# previous-k branch eigenvector.  This follows the same Riemann
+		# sheet across both branch-eigenvalue crossings and large gaps,
+		# whereas the simple "nearest eigenvalue" rule can switch branches
+		# when one eigenvalue jumps faster than the other (e.g. UP at small
+		# k, where the photon-like branch shoots up steeply).
 		for i in range(1, N):
-			d0 = abs(evals[i, 0] - prev)
-			d1 = abs(evals[i, 1] - prev)
-			lp_vals[i] = evals[i, 0] if d0 <= d1 else evals[i, 1]
-			prev       = lp_vals[i]
+			v0 = evecs[i, :, 0]
+			v1 = evecs[i, :, 1]
+			o0 = abs(np.vdot(prev_vec, v0))
+			o1 = abs(np.vdot(prev_vec, v1))
+			pick = 0 if o0 >= o1 else 1
+			branch_vals[i] = evals[i, pick]
+			prev_vec       = evecs[i, :, pick]
 
 		# Drop the prepended anchor (if any) and undo the sort.
 		if anchor_added:
-			lp_vals = lp_vals[1:]
-		out_flat = np.empty_like(lp_vals)
-		out_flat[order] = lp_vals
+			branch_vals = branch_vals[1:]
+		out_flat = np.empty_like(branch_vals)
+		out_flat[order] = branch_vals
 		return out_flat.reshape(in_shape)

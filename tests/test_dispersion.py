@@ -194,6 +194,25 @@ class TestELP:
 		assert len(simple_model.q_grid_nat) == len(q_grid_nat)
 
 
+class TestEUP:
+	def test_UP_above_LP_clean_limit(self, simple_model):
+		"""In the clean limit (eta=0) UP must be strictly above LP for all k."""
+		k_arr = simple_model.q_grid_nat
+		E_lp = simple_model.E_LP(k_arr, 0.0)
+		E_up = simple_model.E_UP(k_arr, 0.0)
+		assert np.all(np.real(E_up) > np.real(E_lp))
+
+	def test_rabi_splitting_UP_LP_at_resonance(self, simple_model, params_nat, eta_grid):
+		"""
+		At k=0 the cavity (when disorder_tuned=True) is tuned to E_ex(0,eta),
+		so the 2x2 block is on resonance and the UP-LP gap equals Omega.
+		"""
+		for eta in eta_grid:
+			E_lp = float(np.real(simple_model.E_LP(np.array([0.0]), eta)[0]))
+			E_up = float(np.real(simple_model.E_UP(np.array([0.0]), eta)[0]))
+			assert (E_up - E_lp) == pytest.approx(params_nat.Omega, rel=1e-5)
+
+
 class TestDispersionModelConstruction:
 	def test_eta_grid_stored(self, simple_model, eta_grid):
 		np.testing.assert_array_equal(simple_model.eta_grid, eta_grid)
