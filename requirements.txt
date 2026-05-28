@@ -1,0 +1,8 @@
+# Runtime dependencies for the polaritons package and accompanying notebooks.
+# For library-only use, install via `pip install -e .` instead, which reads
+# pyproject.toml.
+
+numpy>=1.23
+scipy>=1.10
+matplotlib>=3.6
+jupyter

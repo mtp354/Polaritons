@@ -1,0 +1,38 @@
+# Citation File Format -- https://citation-file-format.github.io/
+# TODO: fill in the placeholders below before the Zenodo release.
+
+cff-version: 1.2.0
+message: "If you use this software, please cite both the article and the archived software."
+title: "Polaritons: self-consistent self-energy framework for disordered exciton-polaritons"
+version: "0.1.0"
+date-released: "2026-05-28"
+license: MIT
+repository-code: "https://github.com/mtp354/Polaritons"
+url: "https://github.com/mtp354/Polaritons"
+authors:
+  - family-names: "TODO"
+    given-names: "TODO"
+    # orcid: "https://orcid.org/0000-0000-0000-0000"
+    # affiliation: "TODO"
+keywords:
+  - polaritons
+  - excitons
+  - disorder
+  - self-energy
+  - many-body physics
+# Once Zenodo mints a DOI, add it here:
+# doi: "10.5281/zenodo.TODO"
+
+preferred-citation:
+  type: article
+  title: "TODO: paper title"
+  authors:
+    - family-names: "TODO"
+      given-names: "TODO"
+  year: 2026
+  # journal: "TODO"
+  # volume: "TODO"
+  # issue: "TODO"
+  # start: TODO
+  # end: TODO
+  # doi: "10.xxxx/TODO"

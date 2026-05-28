@@ -10,7 +10,6 @@ Finite-temperature many-body quantities:
 from __future__ import annotations
 import numpy as np
 from scipy.optimize import brentq
-from .parameters import Params
 from .dispersion import DispersionModel
 
 

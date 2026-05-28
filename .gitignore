@@ -1,8 +1,26 @@
-# Computed results and generated figure outputs
+# Computed results and generated figure outputs.
+# The curated subset under data/example/ is tracked separately (see README).
 Results/
 Plots/
 
 # Python
 __pycache__/
 *.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+.env
+
+# Tooling caches
 .ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# OS
+.DS_Store
+Thumbs.db
