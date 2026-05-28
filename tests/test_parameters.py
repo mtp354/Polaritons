@@ -27,10 +27,6 @@ class TestParamsDefaults:
 
 
 class TestDerivedProperties:
-	def test_E_gap(self):
-		p = Params()
-		assert p.E_gap == pytest.approx(p.E_gap_bare + p.E_bind)
-
 	def test_M(self):
 		p = Params()
 		assert p.M == pytest.approx(p.m_e + p.m_h)
@@ -111,11 +107,11 @@ class TestToNatural:
 		assert p_nat.T      == pytest.approx(p_si.T)
 
 	def test_energy_ratio_preserved(self):
-		"""E_gap/E_bind ratio is preserved by the rescaling."""
+		"""E_gap_bare/E_bind ratio is preserved by the rescaling."""
 		p_si  = Params()
 		p_nat = p_si.to_natural()
-		ratio_si  = p_si.E_gap  / p_si.E_bind
-		ratio_nat = p_nat.E_gap / p_nat.E_bind
+		ratio_si  = p_si.E_gap_bare  / p_si.E_bind
+		ratio_nat = p_nat.E_gap_bare / p_nat.E_bind
 		assert ratio_nat == pytest.approx(ratio_si)
 
 

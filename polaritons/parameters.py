@@ -107,11 +107,6 @@ class Params:
 	# ------------------------------------------------------------------
 
 	@property
-	def E_gap(self) -> float:
-		"""Full band gap = bare gap + binding energy."""
-		return self.E_gap_bare + self.E_bind
-
-	@property
 	def M(self) -> float:
 		"""Total exciton mass m_e + m_h."""
 		return self.m_e + self.m_h
@@ -190,7 +185,6 @@ class Params:
 		"""Serialisable dictionary (for JSON metadata)."""
 		d = asdict(self)
 		# include derived scalar quantities
-		d["E_gap"]  = float(self.E_gap)
 		d["M"]      = float(self.M)
 		d["a"]      = float(self.a)
 		d["beta"]   = float(self.beta)

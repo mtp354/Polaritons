@@ -30,7 +30,7 @@ def make_propagator(p: Params, epsilon: float = 1e-9):
 	                          / (E_ext - hbar^2 q^2 / (2 M) + Q + i*epsilon)
 
 	``E_ext`` is the external energy *measured relative to the exciton band
-	bottom* ``E_gap - E_bind`` (the constant offset is no longer baked into
+	bottom* ``E_gap_bare - E_bind`` (the constant offset is no longer baked into
 	the denominator). ``epsilon`` is the imaginary regulator (in natural
 	energy units) that keeps the propagator finite at the resonance.
 	"""

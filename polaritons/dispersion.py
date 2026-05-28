@@ -138,7 +138,7 @@ class DispersionModel:
 		Complex exciton dispersion in natural energy units, measured *relative
 		to the band bottom* (E_ex(0, η=0) = 0).
 
-		The absolute semiconductor offset ``E_gap - E_bind`` is intentionally
+		The absolute semiconductor offset ``E_gap_bare - E_bind`` is intentionally
 		excluded; add it back in plotting code via
 		``polaritons.plotting.semiconductor_offset_natural`` when an absolute
 		energy axis is required.
@@ -156,7 +156,7 @@ class DispersionModel:
 		    E_ph(k) = sqrt((hbar*c*k/n)^2 + E_0_abs^2) - E_band_bottom,
 
 		where ``E_0_abs = E_band_bottom + Re[E_ex(0, eta)]`` and
-		``E_band_bottom = E_gap - E_bind`` is the semiconductor offset.
+		``E_band_bottom = E_gap_bare - E_bind`` is the semiconductor offset.
 
 		Only the real part of the disorder-shifted exciton energy is used to
 		tune the cavity, so the cavity photon dispersion is purely real and
@@ -164,7 +164,7 @@ class DispersionModel:
 		"""
 		p             = self.p
 		k             = np.asarray(k_nat, dtype=float)
-		E_band_bottom = float(p.E_gap - p.E_bind)
+		E_band_bottom = float(p.E_gap_bare - p.E_bind)
 		E_0_abs       = E_band_bottom + float(np.real(self.E_ex(0.0, eta)))
 		return np.sqrt((p.hbar * p.c * k / p.n_refr)**2 + E_0_abs**2) - E_band_bottom
 
@@ -177,7 +177,7 @@ class DispersionModel:
 		"""
 		p             = self.p
 		k             = np.asarray(k_nat, dtype=float)
-		E_band_bottom = float(p.E_gap - p.E_bind)
+		E_band_bottom = float(p.E_gap_bare - p.E_bind)
 		E_0_abs       = E_band_bottom + float(np.real(self.E_ex(0.0, 0.0)))
 		return np.sqrt((p.hbar * p.c * k / p.n_refr)**2 + E_0_abs**2) - E_band_bottom
 
