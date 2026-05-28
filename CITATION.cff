@@ -10,10 +10,10 @@ license: MIT
 repository-code: "https://github.com/mtp354/Polaritons"
 url: "https://github.com/mtp354/Polaritons"
 authors:
-  - family-names: "TODO"
-    given-names: "TODO"
-    # orcid: "https://orcid.org/0000-0000-0000-0000"
-    # affiliation: "TODO"
+  - family-names: "Prest"
+    given-names: "Matthew"
+    # orcid: "https://orcid.org/0000-0002-3956-516X"
+    # affiliation: "CUNY"
 keywords:
   - polaritons
   - excitons
@@ -21,7 +21,7 @@ keywords:
   - self-energy
   - many-body physics
 # Once Zenodo mints a DOI, add it here:
-# doi: "10.5281/zenodo.TODO"
+# doi: "10.5281/zenodo.20435331"
 
 preferred-citation:
   type: article
