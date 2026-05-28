@@ -101,7 +101,7 @@ def make_kernel_gaussian(p: Params, n_gauss: int = 96):
 	m_e, m_h, a, xi         = p.m_e, p.m_h, p.a, p.xi
 
 	prefactor = (
-		2 * D_0 * M**6 * m_prime**2 * m_rest**2
+		4 * D_0 * M**6 * m_prime**2 * m_rest**2
 		/ (np.pi**2 * a**6 * m_e**2 * m_h**2)
 	)
 	shift_e, shift_h = _kernel_shifts(p)
